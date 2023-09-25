@@ -20,7 +20,6 @@
   检查          Ctrl+C
   格式化        Ctrl+G
   自动修复      Ctrl+F
-  
 更新日志:
   2023/5/1:新增——自动填充
   2023/6/10:修复——文件编码bug(UnicodeDecodeError: 'gbk' codec can't decode byte 0xa5 in position 926: illegal multibyte sequence)
@@ -33,3 +32,6 @@
   2023/8/7:调整——黑客代码风格颜色
   2023/8/8:调整——自动填充候选框位置
   2023/9/9:修复——自动填充bug
+  
+引用资源(除import的库外):
+  1.wkhtmltoimage.exe
