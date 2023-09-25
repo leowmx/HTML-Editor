@@ -83,7 +83,7 @@ def save_copy(*args):
 def save_img(*args):
     code = code_input.get("1.0", END)
     config = imgkit.config(
-        wkhtmltoimage=r"E:\wkhtmltopdf\bin\wkhtmltoimage.exe")
+        wkhtmltoimage=r"./wkhtmltoimage.exe")
     path = filedialog.asksaveasfilename(
         title="保存", filetype=[("图片文件", "*.png")])
     if (".png" not in path):
