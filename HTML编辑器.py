@@ -1233,5 +1233,5 @@ while c:
 
 
 root.mainloop()
-for tag in code_input.tag_names():
-    code_input.tag_remove("tag", "1.0", "end")
+#for tag in code_input.tag_names():
+#    code_input.tag_remove("tag", "1.0", "end")
