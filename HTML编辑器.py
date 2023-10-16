@@ -323,9 +323,22 @@ def custom_prettify(soup):
 def format(*args):
     code = code_input.get("1.0", END)
     soup = bs4.BeautifulSoup(code, 'html.parser')
-    formatted_html = soup.prettify()
+    half_formatted_html = soup.prettify()
+    formatted_html=""
+    tab_list=re.findall(r'\n *.*',half_formatted_html)
+    for line in tab_list:
+        cnt=0
+        print(line,end='')
+        for char in line:
+            if char==' ':
+                cnt+=1
+            elif char!='\n':
+                break
+        new_line=line.lstrip()
+        new_line = "    "*cnt+new_line
+        formatted_html+=new_line+"\n"
     code_input.delete("1.0", END)
-    code_input.insert('insert', formatted_html)
+    code_input.insert('insert', half_formatted_html.split("\n")[0]+"\n"+formatted_html)
 # 压缩
 
 
@@ -351,9 +364,23 @@ def compress_html():
 def fix(*args):
     code = code_input.get("1.0", END)
     soup = bs4.BeautifulSoup(code, 'html5lib')
-    fixed_html = soup.prettify()
+    half_fixed_html = soup.prettify()
+    fixed_html=""
+    tab_list=re.findall(r'\n *.*',half_fixed_html)
+    for line in tab_list:
+        cnt=0
+        print(line,end='')
+        for char in line:
+            if char==' ':
+                cnt+=1
+            elif char!='\n':
+                break
+        new_line=line.lstrip()
+        new_line = "    "*cnt+new_line
+        fixed_html+=new_line+"\n"
+    
     code_input.delete("1.0", END)
-    code_input.insert('insert', fixed_html)
+    code_input.insert('insert', half_fixed_html.split("\n")[0]+"\n"+fixed_html)
 
 
 def cancel(*args):
