@@ -390,8 +390,11 @@ def find_text(*args):
             break
         end_index = f"{search_index}+{len(text)}c"
         # print(search_index, end_index)
-        code_input.tag_add("find", search_index, end_index)
-        last_index = search_index
+        try:
+            code_input.tag_add("find", search_index, end_index)
+            last_index = search_index
+        except:
+            break
 
 
 def get_line_num():
