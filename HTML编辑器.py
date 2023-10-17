@@ -584,6 +584,7 @@ def bg_color():
         # code_input.config(insertbackground="black")
         listbox.config(bg=bg_rgb[1], borderwidth=0, highlightthickness=0,
                        highlightbackground=bg_rgb[1])
+        root.config(bg=bg_rgb[1])
 
 
 def t_color():
