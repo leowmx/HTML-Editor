@@ -25,7 +25,8 @@ from pygments import highlight
 from pygments.formatters import ImageFormatter
 from pygments.lexers import get_lexer_by_name
 from translate import Translator
-#from xes.tool import *
+import math
+
 
 
 global css_code_input, css, open_path
@@ -843,11 +844,34 @@ def on_key_pressed(event):
         recorded_text_attr = ""
         code_input.bind("<KeyRelease>", on_text_recorded_attr)
 
+html_single_tags = [
+    'br',  # 换行
+    'hr',  # 水平线
+    'img',  # 图像
+    'input',  # 输入框
+    'link',  # 链接关系
+    'meta',  # 元数据
+    'area',  # 图像映射区域
+    'base',  # 为页面上的所有相对URL定义默认地址或目标
+    'col',  # 定义用于一个或多个列的列属性
+    'command',  # 定义命令按钮，比如单选按钮、复选框或按钮
+    'embed',  # 外部应用或者交互式内容
+    'keygen',  # 生成密钥
+    'param',  # 为嵌入的对象定义参数
+    'source',  # 为媒体元素定义媒体资源
+    'track',  # 定义文本轨道，用于通过WebVTT文件为视频和音频内容添加字幕和标题
+    'wbr',  # 可能的换行点
+]
 
 def on_text_recorded(event):
     global recorded_text
     if event.char == '>':
         code_input.unbind("<KeyRelease>")
+        if (recorded_text[1:].split(" ")[0] in html_single_tags) == False:
+            add_tag = "</"+recorded_text[1:].split(" ")[0]+">"
+            index = code_input.index(tk.INSERT)
+            code_input.insert(index, add_tag)
+        listbox.place_forget()
         recorded_text = ""
     else:
         if event.keysym == 'BackSpace':
@@ -859,13 +883,22 @@ def on_text_recorded(event):
 
 
 def on_text_recorded_attr(event):
-    global recorded_text_attr
-    if event.keysym == 'BackSpace':
-        recorded_text_attr = recorded_text_attr[:-1]
-        auto_completer(recorded_text_attr, 1)
+    global recorded_text_attr,recorded_text
+    if event.char == '>':
+        code_input.unbind("<KeyRelease>")
+        if (recorded_text[1:].split(" ")[0] in html_single_tags) == False:
+            add_tag = "</"+recorded_text[1:].split(" ")[0]+">"
+            index = code_input.index(tk.INSERT)
+            code_input.insert(index, add_tag)
+        listbox.place_forget()
+        recorded_text = ""
     else:
-        recorded_text_attr += event.char
-        auto_completer(recorded_text_attr, 1)
+        if event.keysym == 'BackSpace':
+            recorded_text_attr = recorded_text_attr[:-1]
+            auto_completer(recorded_text_attr, 1)
+        else:
+            recorded_text_attr += event.char
+            auto_completer(recorded_text_attr, 1)
 
 def find_tag_start():
     index=code_input.index(tk.INSERT)
@@ -908,6 +941,27 @@ def select_option_attr(event):
         listbox.place_forget()
         code_input.unbind("<KeyRelease>")
         recorded_text_attr = ""
+
+
+# 自动缩进
+
+
+def auto_tab(event):
+    index = float(code_input.index(tk.INSERT))
+    last_line_begin = str(math.floor(index))+".0"
+    last_line_end = str(math.floor(index))+".end"
+    last_line_code = code_input.get(last_line_begin, last_line_end)
+    cnt = 0
+    for i in last_line_code:
+        if i != " ":
+            break
+        cnt += 1
+    
+    code_input.insert(tk.INSERT, "\n")
+    code_input.insert(str(math.floor(index+1))+".0", " "*cnt)
+    code_input.mark_set(tk.INSERT,f"{math.floor(index+1)}.end")
+    return "break"
+
 
 
 # 检查
@@ -1199,6 +1253,7 @@ root.bind('<Control g>', format)
 root.bind('<Control F>', fix)
 root.bind('<Control f>', find_text)
 code_input.bind('<Key>', on_key_pressed)
+code_input.bind('<Return>', auto_tab)
 
 # root.update()
 
