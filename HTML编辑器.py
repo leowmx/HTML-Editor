@@ -861,6 +861,9 @@ html_single_tags = [
     'source',  # 为媒体元素定义媒体资源
     'track',  # 定义文本轨道，用于通过WebVTT文件为视频和音频内容添加字幕和标题
     'wbr',  # 可能的换行点
+    'br/',  # 换行new
+    'hr/',  # 水平线new
+    
 ]
 
 def on_text_recorded(event):
@@ -956,6 +959,17 @@ def auto_tab(event):
         if i != " ":
             break
         cnt += 1
+    
+    start_pattern = r"<\w+\s*.*>"
+    end_pattern = r"</\w+\s*>"
+    start_tag_num = len(re.findall(start_pattern,last_line_code))
+    end_tag_num = len(re.findall(end_pattern,last_line_code))
+    for i in re.findall(start_pattern,last_line_code):
+        if i[1:][:-1] in html_single_tags: start_tag_num-=1
+    print(start_tag_num,end_tag_num)
+    if start_tag_num > end_tag_num:
+        cnt+=4
+    
     
     code_input.insert(tk.INSERT, "\n")
     code_input.insert(str(math.floor(index+1))+".0", " "*cnt)
