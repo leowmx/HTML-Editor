@@ -13,6 +13,7 @@ from multiprocessing import Pool
 from time import *
 from tkinter import *
 from tkinter import colorchooser, filedialog, messagebox, simpledialog
+from queue import Queue
 
 import bs4
 import html5lib
@@ -20,20 +21,23 @@ import imgkit
 import keyboard
 import pdfkit
 import requests
-from PIL import Image 
+from PIL import Image
 from pygments import highlight
 from pygments.formatters import ImageFormatter
 from pygments.lexers import get_lexer_by_name
 from translate import Translator
-import math
 
+import math
+import pyperclip
+from win10toast import *
+from urllib.parse import parse_qs, urlparse
 
 
 global css_code_input, css, open_path
 encoding_s = "utf-8"
 recorded_text = ""
 recorded_text_attr = ""
-httpd = None
+# httpd = None
 c = True
 url = 'https://validator.w3.org/nu/?out=json'
 headers = {
@@ -41,6 +45,16 @@ headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36'
 }
 open_path = ""
+custom_event_name = "<<UpdateCode>>"
+
+
+def on_activated(toast_id, activated_kind, action_arg=None):
+    global page_url
+    pyperclip.copy(page_url)
+
+
+toast = ToastNotifier()
+
 # HTML基本操作
 
 # HTML保存
@@ -57,12 +71,15 @@ def save_html_code(*args):
         # print(open_path)
     with open(open_path, "w", encoding=encoding_s)as f:
         f.write(code)
+
+    toast.show_toast("代码保存成功", "文件路径:"+open_path +
+                     "\n编码方式:"+encoding_s, threaded=True)
     root.title("HTML编辑器-" + open_path + "-" + encoding_s)
 # HTML预览
 
 
 def run_html(*args):
-    global open_path
+    global open_path, page_url
     code = code_input.get("1.0", END)
     if ".txt" in open_path:
         messagebox.showwarning("提示", "txt文件不支持预览！")
@@ -70,6 +87,8 @@ def run_html(*args):
         save_html_code()
     page_url = "file://" + open_path
     webbrowser.open(page_url)
+    toast.show_toast("正在预览HTML", "如未弹出窗口，请在浏览器输入以下url:\n" +
+                     page_url, threaded=True)
 # HTML另存为
 
 
@@ -84,7 +103,7 @@ def save_copy(*args):
 def save_img(*args):
     code = code_input.get("1.0", END)
     config = imgkit.config(
-        wkhtmltoimage=r"./wkhtmltoimage.exe")
+        wkhtmltoimage=r"D:\编程资料\编程语言\python\我的程序\单个程序\lib\wkhtmltoimage.exe")
     path = filedialog.asksaveasfilename(
         title="保存", filetype=[("图片文件", "*.png")])
     if (".png" not in path):
@@ -107,21 +126,61 @@ def code_to_image(*args):
     with open(path, "wb") as f:
         f.write(image_data)
     print(f"Image file exported to: {path}")
+
+
 # HTML在线调试
+message_queue = Queue()
+# 100ms更新代码输入框
+
+
+def update_code_input(queue):
+    if not queue.empty():
+        code_input.delete("1.0", tk.END)
+        code_input.insert(tk.END, queue.get())
+    root.after(100, update_code_input, queue)
+
 # 创建本地服务器
 
 
-def add_server(def_code):
-    global httpd
+def add_server(def_code, save_code_page, queue):
+    # global httpd
 
     class MyHandler(http.server.SimpleHTTPRequestHandler):
         def do_GET(self):
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()
-            self.wfile.write(def_code.encode('utf-8'))
+
+            if self.path == '/':
+                # 主页
+                response_content = '<h1>Welcome to HTML Editor</h1>'
+            elif self.path == '/editor':
+                # 编辑器页面
+                response_content = def_code
+            elif '/save_code' in self.path:
+                queue_params = parse_qs(urlparse(self.path).query)
+                html_code = queue_params.get('code', [None])[0]
+                queue.put(html_code)
+
+                toast.show_toast("代码同步成功", "HTML已同步到应用程序", threaded=True)
+                response_content = save_code_page
+            elif self.path == '/close':
+                response_content = '<h1>Online editing disabled!</h1>'
+                toast.show_toast("在线编辑已关闭", "再次打开请点击在线编辑按钮！", threaded=True)
+                self.wfile.write(response_content.encode('utf-8'))
+                on_closing()
+                return None
+            else:
+                # 其他未定义路径或资源
+                response_content = '<h1>404 Not Found</h1>'
+                self.send_response(404)
+
+            self.wfile.write(response_content.encode('utf-8'))
+
+            # self.wfile.write(def_code.encode('utf-8'))
 
     # 创建非阻塞的HTTP服务器
+
     class NonBlockingHTTPServer(http.server.ThreadingHTTPServer):
         def server_bind(self):
             self.socket.settimeout(1)
@@ -131,27 +190,33 @@ def add_server(def_code):
     # 创建服务器并在后台线程中运行
 
     def RunWebServer():
+        global httpd
         server_address = ('localhost', 8000)
         httpd = NonBlockingHTTPServer(server_address, MyHandler)
         httpd.serve_forever()
     # 关闭服务器
 
     def on_closing():
-        server_address = ('localhost', 8000)
-        httpd = NonBlockingHTTPServer(server_address, MyHandler)
-        httpd.server_close()
-        httpd.socket.close()
+        global httpd
+        try:
+            httpd.server_close()
+            httpd.socket.close()
+        except:
+            pass
         root.destroy()
     # 重启服务器
-    if httpd is not None:
-        httpd = NonBlockingHTTPServer(('localhost', 8000), MyHandler)
+    global httpd
+    try:
+        # httpd = NonBlockingHTTPServer(('localhost', 8000), MyHandler)
         httpd.server_close()
         httpd.socket.close()
+    except:
+        pass
     server_thread = threading.Thread(target=RunWebServer)
     server_thread.start()
     # 弹出窗口
     root.attributes("-topmost", 0)
-    webbrowser.open("http://127.0.0.1:8000")
+    webbrowser.open("http://127.0.0.1:8000/editor")
     # 绑定窗口关闭事件
     root.protocol("WM_DELETE_WINDOW", on_closing)
 # 生成网页代码
@@ -168,6 +233,8 @@ def online_debug(*args):
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.62.0/theme/dracula.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.62.0/mode/htmlmixed/htmlmixed.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.62.0/addon/fold/foldgutter.css" />
+    <link rel="stylesheet" href=\"http://www.leibeibei.cn/static/cdn_bootstrap/bootstrap523.min.css\">
+    <script src=\"http://www.leibeibei.cn/static/cdn_bootstrap/bootstrap523.bundle.min.js\"></script>
     <meta charset=\'utf-8\'>
     <style>
         /* 定义编辑区域的样式 */
@@ -182,7 +249,10 @@ def online_debug(*args):
     <br>
     <hr>
     <p>HTML编辑区</p>
-    <textarea class="editor" id="html-editor">{html_code}</textarea>
+    <form method="get" action="/save_code">
+        <textarea class="editor" id="html-editor" name="code">{html_code}</textarea>
+        <button type="submit" class="btn btn-outline-primary">同步到应用</button>
+    </form>
     <br><br>
     <hr>
     <p>HTML预览区</p>
@@ -236,38 +306,30 @@ def online_debug(*args):
 </body>
 </html>
     '''
-    '''class MyHandler(http.server.SimpleHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            self.wfile.write(def_code.encode('utf-8'))
-
-    # 创建非阻塞的HTTP服务器
-    class NonBlockingHTTPServer(http.server.ThreadingHTTPServer):
-        def server_bind(self):
-            self.socket.settimeout(1)
-            super().server_bind()
-            self.socket.settimeout(None)
-
-    # 创建服务器并在后台线程中运行
-    def RunWebServer():
-        server_address = ('localhost', 8000)
-        httpd = NonBlockingHTTPServer(server_address, MyHandler)
-        httpd.serve_forever()
-    def on_closing():
-        server_address = ('localhost', 8000)
-        httpd = NonBlockingHTTPServer(server_address, MyHandler)
-        httpd.server_close()
-        httpd.socket.close()
-        root.destroy()
-    server_thread = threading.Thread(target=RunWebServer)
-    server_thread.start()
-    root.attributes("-topmost", 0)
-    webbrowser.open("http://127.0.0.1:8000")
-    root.protocol("WM_DELETE_WINDOW", on_closing)'''
-    add_server(def_code)
-
+    save_code_page = '''
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <title>HTML Editor</title>
+                <meta charset=\'utf-8\'>
+                <link rel="stylesheet" href=\"http://www.leibeibei.cn/static/cdn_bootstrap/bootstrap523.min.css\">
+                <script src=\"http://www.leibeibei.cn/static/cdn_bootstrap/bootstrap523.bundle.min.js\"></script>
+            </head>
+            <body>
+                <center>
+                    <h1 class="text-primary">正在同步中...</h1>
+                    <h4 class="text-warning">请注意通知！</h2>
+                    <br>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-primary" onclick="window.location.href='http://127.0.0.1:8000/editor'">继续编辑</button>
+                        <button type="button" class="btn btn-danger" onclick="window.location.href='http://127.0.0.1:8000/close'">关闭在线编辑器</button>
+                    </div>
+                </center>
+            </body>
+        </html>
+    '''
+    add_server(def_code, save_code_page, message_queue)
+    update_code_input(message_queue)
 
 # 打开HTML
 
@@ -325,21 +387,22 @@ def format(*args):
     code = code_input.get("1.0", END)
     soup = bs4.BeautifulSoup(code, 'html.parser')
     half_formatted_html = soup.prettify()
-    formatted_html=""
-    tab_list=re.findall(r'\n *.*',half_formatted_html)
+    formatted_html = ""
+    tab_list = re.findall(r'\n *.*', half_formatted_html)
     for line in tab_list:
-        cnt=0
-        print(line,end='')
+        cnt = 0
+        # print(line, end='')
         for char in line:
-            if char==' ':
-                cnt+=1
-            elif char!='\n':
+            if char == ' ':
+                cnt += 1
+            elif char != '\n':
                 break
-        new_line=line.lstrip()
+        new_line = line.lstrip()
         new_line = "    "*cnt+new_line
-        formatted_html+=new_line+"\n"
+        formatted_html += new_line+"\n"
     code_input.delete("1.0", END)
-    code_input.insert('insert', half_formatted_html.split("\n")[0]+"\n"+formatted_html)
+    code_input.insert('insert', half_formatted_html.split("\n")[
+                      0]+"\n"+formatted_html)
 # 压缩
 
 
@@ -366,20 +429,20 @@ def fix(*args):
     code = code_input.get("1.0", END)
     soup = bs4.BeautifulSoup(code, 'html5lib')
     half_fixed_html = soup.prettify()
-    fixed_html=""
-    tab_list=re.findall(r'\n *.*',half_fixed_html)
+    fixed_html = ""
+    tab_list = re.findall(r'\n *.*', half_fixed_html)
     for line in tab_list:
-        cnt=0
-        print(line,end='')
+        cnt = 0
+        # print(line, end='')
         for char in line:
-            if char==' ':
-                cnt+=1
-            elif char!='\n':
+            if char == ' ':
+                cnt += 1
+            elif char != '\n':
                 break
-        new_line=line.lstrip()
+        new_line = line.lstrip()
         new_line = "    "*cnt+new_line
-        fixed_html+=new_line+"\n"
-    
+        fixed_html += new_line+"\n"
+
     code_input.delete("1.0", END)
     code_input.insert('insert', half_fixed_html.split("\n")[0]+"\n"+fixed_html)
 
@@ -406,7 +469,7 @@ def redo():
 
 
 def find_text(*args):
-    code_input.tag_remove("find", "1.0", "end")
+    code_input.tag_remove("find", "1.0", END)
     root.attributes("-topmost", 0)
     text = simpledialog.askstring('查找', '请输入要查找的内容:')
     last_index = "1.0"
@@ -425,15 +488,86 @@ def find_text(*args):
             break
 
 
+def find_set_tag():
+    code_input.tag_remove("set", "1.0", END)
+    text = "meta"
+    last_index = "1.0"
+    while True:
+        search_index = code_input.search(
+            text, f"{last_index}+1c", stopindex=tk.END)
+        # print(search_index)
+        if search_index == last_index:
+            break
+        end_index = f"{search_index}+{len(text)}c"
+        # print(search_index, end_index)
+        try:
+            code_input.tag_add("set", str(
+                int(float(search_index)))+".0", str(int(float(search_index)))+".end")
+            last_index = search_index
+        except:
+            break
+
+    text = "title"
+    last_index = "1.0"
+    while True:
+        search_index = code_input.search(
+            text, f"{last_index}+1c", stopindex=tk.END)
+        # print(search_index)
+        if search_index == last_index:
+            break
+        end_index = f"{search_index}+{len(text)}c"
+        # print(search_index, end_index)
+        try:
+            code_input.tag_add("set", str(
+                int(float(search_index)))+".0", str(int(float(search_index)))+".end")
+            last_index = search_index
+        except:
+            break
+
+    text = "link"
+    last_index = "1.0"
+    while True:
+        search_index = code_input.search(
+            text, f"{last_index}+1c", stopindex=tk.END)
+        # print(search_index)
+        if search_index == last_index:
+            break
+        end_index = f"{search_index}+{len(text)}c"
+        # print(search_index, end_index)
+        try:
+            code_input.tag_add("set", str(
+                int(float(search_index)))+".0", str(int(float(search_index)))+".end")
+            last_index = search_index
+        except:
+            break
+
+
+def get_characters_per_line():
+    width = code_input.winfo_width()
+    # print(width)
+    font_width = 6.6057692307692307692307692307692
+    characters_per_line = int(width / font_width)
+    return characters_per_line
+
+
 def get_line_num():
     code = code_input.get("1.0", END)
     enter_num = 0
     text_num = 0
-    for i in code:
+    auto_return_pos = {}
+    dtn = 0
+    for i in range(len(code)):
         text_num += 1
-        if i == "\n":
+        dtn += 1
+        if code[i] == "\n" and i != len(code) - 1:
+            cpl = get_characters_per_line()
+            # cpl=205
+            if dtn > cpl:
+                auto_return_pos[enter_num+1] = math.ceil((dtn-cpl)/cpl)
+            dtn = 0
             enter_num += 1
-    return [enter_num, text_num]
+
+    return [enter_num, text_num, auto_return_pos]
 # def pool_auto_save():
 #     P = Pool()
 #     P.apply_async(auto_save)
@@ -585,6 +719,7 @@ def bg_color():
         # code_input.config(insertbackground="black")
         listbox.config(bg=bg_rgb[1], borderwidth=0, highlightthickness=0,
                        highlightbackground=bg_rgb[1])
+        line_text.config(bg=bg_rgb[1])
         root.config(bg=bg_rgb[1])
 
 
@@ -593,11 +728,13 @@ def t_color():
     if t_rgb[1] != None:
         code_input.config(fg=t_rgb[1])
         code_input.config(insertbackground=t_rgb[1])
+        line_text.config(fg=t_rgb[1])
 
 
 def reset_color():
     code_input.config(fg='black', bg='white')
     code_input.config(insertbackground="black")
+    line_text.config(fg='black', bg='white')
     root.config(bg='white')
     listbox.config(bg="white", borderwidth=0,
                    highlightthickness=0, highlightbackground="white")
@@ -606,6 +743,7 @@ def reset_color():
 def green_code_color():
     code_input.config(fg='green', bg='#001115')
     code_input.config(insertbackground="green")
+    line_text.config(fg='white', bg='#001115')
     root.config(bg='#001115')
     listbox.config(bg="#0A0A0A", borderwidth=0,
                    highlightthickness=0, highlightbackground="#001126")
@@ -618,12 +756,14 @@ def getIndex(text, index):
 def update_x():
     global c
     c = False
-    quit()
-    root.quit()
-
+    root.destroy()
+    sleep(0.1)
+    quit(0)
 
 # 常用语句
 # html
+
+
 def doctype():
     code_input.insert('insert', r'<!DOCTYPE html>')
 
@@ -844,6 +984,7 @@ def on_key_pressed(event):
         recorded_text_attr = ""
         code_input.bind("<KeyRelease>", on_text_recorded_attr)
 
+
 html_single_tags = [
     'br',  # 换行
     'hr',  # 水平线
@@ -863,8 +1004,10 @@ html_single_tags = [
     'wbr',  # 可能的换行点
     'br/',  # 换行new
     'hr/',  # 水平线new
-    
+    'meta/'  # meta 结束
+
 ]
+
 
 def on_text_recorded(event):
     global recorded_text
@@ -886,7 +1029,7 @@ def on_text_recorded(event):
 
 
 def on_text_recorded_attr(event):
-    global recorded_text_attr,recorded_text
+    global recorded_text_attr, recorded_text
     if event.char == '>':
         code_input.unbind("<KeyRelease>")
         if (recorded_text[1:].split(" ")[0] in html_single_tags) == False:
@@ -903,26 +1046,30 @@ def on_text_recorded_attr(event):
             recorded_text_attr += event.char
             auto_completer(recorded_text_attr, 1)
 
+
 def find_tag_start():
-    index=code_input.index(tk.INSERT)
-    line=index.split('.')[0]
-    col=index.split('.')[1]
-    cline_text=code_input.get(f'{line}.0',f'{line}.end')
-    find_index=-1
-    for i in range(int(col)-1,-1,-1):
-        if cline_text[i]=='<':
-            find_index=i
+    index = code_input.index(tk.INSERT)
+    line = index.split('.')[0]
+    col = index.split('.')[1]
+    cline_text = code_input.get(f'{line}.0', f'{line}.end')
+    find_index = -1
+    for i in range(int(col)-1, -1, -1):
+        if cline_text[i] == '<':
+            find_index = i
             break
-    if find_index!=-1:return str(find_index)
+    if find_index != -1:
+        return str(find_index)
     return "linestart"
+
 
 def select_option(event):
     global recorded_text
     selection = listbox.get(tk.ACTIVE)
     if selection:
         index = code_input.index(tk.INSERT)
-        tag_start_col=find_tag_start()
-        code_input.insert(index, selection[len(code_input.get(f"{int(float(index))}.{int(float(tag_start_col))}", index)):])
+        tag_start_col = find_tag_start()
+        code_input.insert(index, selection[len(code_input.get(
+            f"{int(float(index))}.{int(float(tag_start_col))}", index)):])
         listbox.place_forget()
         code_input.unbind("<KeyRelease>")
         recorded_text = ""
@@ -959,23 +1106,24 @@ def auto_tab(event):
         if i != " ":
             break
         cnt += 1
-    
+
     start_pattern = r"<\w+\s*.*>"
     end_pattern = r"</\w+\s*>"
-    start_tag_num = len(re.findall(start_pattern,last_line_code))
-    end_tag_num = len(re.findall(end_pattern,last_line_code))
-    for i in re.findall(start_pattern,last_line_code):
-        if i[1:][:-1] in html_single_tags: start_tag_num-=1
-    print(start_tag_num,end_tag_num)
+    start_tag_num = len(re.findall(start_pattern, last_line_code))
+    end_tag_num = len(re.findall(end_pattern, last_line_code))
+    for i in re.findall(start_pattern, last_line_code):
+        for tag in html_single_tags:
+            if tag in i[1:][:-1]:
+                start_tag_num -= 1
+                break
+    # print(start_tag_num, end_tag_num)
     if start_tag_num > end_tag_num:
-        cnt+=4
-    
-    
+        cnt += 4
+
     code_input.insert(tk.INSERT, "\n")
     code_input.insert(str(math.floor(index+1))+".0", " "*cnt)
-    code_input.mark_set(tk.INSERT,f"{math.floor(index+1)}.end")
+    code_input.mark_set(tk.INSERT, f"{math.floor(index+1)}.end")
     return "break"
-
 
 
 # 检查
@@ -1050,10 +1198,10 @@ def m3():
 # 关于、帮助
 info = '''名称:HTML编辑器
 作者：王铭瑄
-版本:3.3.1
+版本:3.4.0
 更新日志:
 2023/5/1:新增——自动填充
-2023/6/10:修复——文件编码bug(UnicodeDecodeError: 'gbk' codec can't decode byte 0xa5 in position 926: illegal multibyte sequence)
+2023/6/10:修复——文件编码bug(UnicodeDecodeError: 'gbk' codec can't decode byte 0xa5 in position xxx: illegal multibyte sequence)
 2023/6/11:新增——格式化、自动修复
 2023/6/12:新增——关于、帮助
 2023/6/18:新增——保存代码为图片、保存网页预览
@@ -1063,6 +1211,10 @@ info = '''名称:HTML编辑器
 2023/8/7:调整——黑客代码风格颜色
 2023/8/8:调整——自动填充候选框位置
 2023/9/9:修复——自动填充bug
+2024/2/12:新增——自动缩进
+2024/4/22:新增——显示行数
+2024/4/22:修复——自动缩进
+2024/4/22:新增——meta、title、link标签的青色标记
 '''
 help_info = '''1.输入操作
 复制          Ctrl+C
@@ -1102,7 +1254,7 @@ y = int(h / 2 - 300)
 root.attributes("-topmost", 1)
 root.title("HTML编辑器")
 # root.geometry("800x600+330+335")
-root.geometry("%sx%s+%s+%s" % (w, h, x, y))
+root.geometry("%sx%s+%s+%s" % (w, h, 0, 0))
 root.state('zoomed')
 root.protocol("WM_DELETE_WINDOW", update_x)
 line_num_text_l = tk.StringVar()
@@ -1113,80 +1265,95 @@ file_manage.add_command(label="保存",command=save_html_code)
 file_manage.add_command(label="HTML另存为",command=save_copy)
 file_manage.add_command(label="打开",command=open_html)'''
 # 菜单
-cmds = tk.Menu(root)
-file = tk.Menu(cmds, tearoff=0)
+cmds = tk.Menu(root, font=('微软雅黑', 10))
+file = tk.Menu(cmds, tearoff=0, font=('微软雅黑', 10))
 cmds.add_cascade(label="文件", menu=file)
-file.add_command(label="保存(Ctrl+S)", command=save_html_code)
-file.add_command(label="保存网页预览图", command=save_img)
-file.add_command(label="保存代码为图片", command=code_to_image)
-file.add_command(label="另存为(Alt+C)", command=save_copy)
-file.add_command(label="打开(Ctrl+P)", command=open_html)
-file.add_command(label="压缩代码", command=compress_html)
+file.add_command(label="保存(Ctrl+S)", command=save_html_code, font=('微软雅黑', 10))
+file.add_command(label="保存网页预览图", command=save_img, font=('微软雅黑', 10))
+file.add_command(label="保存代码为图片", command=code_to_image, font=('微软雅黑', 10))
+file.add_command(label="另存为(Alt+C)", command=save_copy, font=('微软雅黑', 10))
+file.add_command(label="打开(Ctrl+P)", command=open_html, font=('微软雅黑', 10))
+file.add_command(label="压缩代码", command=compress_html, font=('微软雅黑', 10))
 # file.add_command(label="自动保存",command=pool_auto_save)
 # file.add_command(label="取消自动保存",command=cancel_auto_save)
 
-test = tk.Menu(cmds, tearoff=0)
-cmds.add_cascade(label="测试", menu=test)
-test.add_command(label="预览(R)", command=run_html)
-test.add_command(label="检查", command=check)
-test.add_command(label="在线调试", command=online_debug)
+test = tk.Menu(cmds, tearoff=0, font=('微软雅黑', 10))
+cmds.add_cascade(label="测试", menu=test, font=('微软雅黑', 10))
+test.add_command(label="预览(R)", command=run_html, font=('微软雅黑', 10))
+test.add_command(label="检查", command=check, font=('微软雅黑', 10))
+test.add_command(label="在线调试", command=online_debug, font=('微软雅黑', 10))
 
-order_file = tk.Menu(cmds, tearoff=0)
-cmds.add_cascade(label="其它脚本", menu=order_file)
-order_file.add_command(label="添加css文件", command=add_css_file)
-order_file.add_command(label="添加js文件", command=add_js_file)
+order_file = tk.Menu(cmds, tearoff=0, font=('微软雅黑', 10))
+cmds.add_cascade(label="其它脚本", menu=order_file, font=('微软雅黑', 10))
+order_file.add_command(
+    label="添加css文件", command=add_css_file, font=('微软雅黑', 10))
+order_file.add_command(label="添加js文件", command=add_js_file, font=('微软雅黑', 10))
 
-setcolor = tk.Menu(cmds, tearoff=0)
-cmds.add_cascade(label="主题", menu=setcolor)
-setcolor.add_command(label="字体颜色", command=t_color)
-setcolor.add_command(label="背景颜色", command=bg_color)
-setcolor.add_command(label="浅色", command=reset_color)
-setcolor.add_command(label="黑客代码(深色)", command=green_code_color)
+setcolor = tk.Menu(cmds, tearoff=0, font=('微软雅黑', 10))
+cmds.add_cascade(label="主题", menu=setcolor, font=('微软雅黑', 10))
+setcolor.add_command(label="字体颜色", command=t_color, font=('微软雅黑', 10))
+setcolor.add_command(label="背景颜色", command=bg_color, font=('微软雅黑', 10))
+setcolor.add_command(label="浅色", command=reset_color, font=('微软雅黑', 10))
+setcolor.add_command(
+    label="黑客代码(深色)", command=green_code_color, font=('微软雅黑', 10))
 
-quick_tag = tk.Menu(cmds, tearoff=0)
-cmds.add_cascade(label="快捷标签", menu=quick_tag)
-quick_tag.add_command(label="<!DOCTYPE html>", command=doctype)
-quick_tag.add_command(label="h1", command=h1)
-quick_tag.add_command(label="h2", command=h2)
-quick_tag.add_command(label="h3", command=h3)
-quick_tag.add_command(label="h4", command=h4)
-quick_tag.add_command(label="h5", command=h5)
-quick_tag.add_command(label="p", command=p)
-quick_tag.add_command(label="html", command=html)
-quick_tag.add_command(label="head", command=head)
-quick_tag.add_command(label="title", command=title_tag)
-quick_tag.add_command(label="body", command=body)
-quick_tag.add_command(label="link", command=link)
-quick_tag.add_command(label="script", command=script)
-quick_tag.add_command(label="form", command=form)
-quick_tag.add_command(label="input", command=input_tag)
-quick_tag.add_command(label="设置编码语言", command=set_lang)
-quick_tag.add_command(label="设置屏幕适配", command=set_srceen_size)
-quick_tag.add_command(label="空标签", command=empty_tag)
+quick_tag = tk.Menu(cmds, tearoff=0, font=('微软雅黑', 10))
+cmds.add_cascade(label="快捷标签", menu=quick_tag, font=('微软雅黑', 10))
+quick_tag.add_command(label="<!DOCTYPE html>",
+                      command=doctype, font=('微软雅黑', 10))
+quick_tag.add_command(label="h1", command=h1, font=('微软雅黑', 10))
+quick_tag.add_command(label="h2", command=h2, font=('微软雅黑', 10))
+quick_tag.add_command(label="h3", command=h3, font=('微软雅黑', 10))
+quick_tag.add_command(label="h4", command=h4, font=('微软雅黑', 10))
+quick_tag.add_command(label="h5", command=h5, font=('微软雅黑', 10))
+quick_tag.add_command(label="p", command=p, font=('微软雅黑', 10))
+quick_tag.add_command(label="html", command=html, font=('微软雅黑', 10))
+quick_tag.add_command(label="head", command=head, font=('微软雅黑', 10))
+quick_tag.add_command(label="title", command=title_tag, font=('微软雅黑', 10))
+quick_tag.add_command(label="body", command=body, font=('微软雅黑', 10))
+quick_tag.add_command(label="link", command=link, font=('微软雅黑', 10))
+quick_tag.add_command(label="script", command=script, font=('微软雅黑', 10))
+quick_tag.add_command(label="form", command=form, font=('微软雅黑', 10))
+quick_tag.add_command(label="input", command=input_tag, font=('微软雅黑', 10))
+quick_tag.add_command(label="设置编码语言", command=set_lang, font=('微软雅黑', 10))
+quick_tag.add_command(
+    label="设置屏幕适配", command=set_srceen_size, font=('微软雅黑', 10))
+quick_tag.add_command(label="空标签", command=empty_tag, font=('微软雅黑', 10))
 
-quick_properties_html = tk.Menu(cmds, tearoff=0)
-cmds.add_cascade(label="常用属性", menu=quick_properties_html)
-quick_properties_html.add_command(label="类", command=class_)
-quick_properties_html.add_command(label="id", command=id_)
-quick_properties_html.add_command(label="name", command=name)
-quick_properties_html.add_command(label="action", command=action)
-quick_properties_html.add_command(label="style", command=style)
-quick_properties_html.add_command(label="hidden", command=hidden)
-quick_properties_html.add_command(label="title", command=title)
-quick_properties_html.add_command(label="accesskey", command=accesskey)
+quick_properties_html = tk.Menu(cmds, tearoff=0, font=('微软雅黑', 10))
+cmds.add_cascade(label="常用属性", menu=quick_properties_html, font=('微软雅黑', 10))
+quick_properties_html.add_command(label="类", command=class_, font=('微软雅黑', 10))
+quick_properties_html.add_command(label="id", command=id_, font=('微软雅黑', 10))
+quick_properties_html.add_command(
+    label="name", command=name, font=('微软雅黑', 10))
+quick_properties_html.add_command(
+    label="action", command=action, font=('微软雅黑', 10))
+quick_properties_html.add_command(
+    label="style", command=style, font=('微软雅黑', 10))
+quick_properties_html.add_command(
+    label="hidden", command=hidden, font=('微软雅黑', 10))
+quick_properties_html.add_command(
+    label="title", command=title, font=('微软雅黑', 10))
+quick_properties_html.add_command(
+    label="accesskey", command=accesskey, font=('微软雅黑', 10))
 
 
-file = tk.Menu(cmds, tearoff=0)
-cmds.add_cascade(label="模板", menu=file)
-file.add_command(label="表单模板", command=m1)
-file.add_command(label="相册模板", command=m2)
-file.add_command(label="个人主页模板", command=m3)
+file = tk.Menu(cmds, tearoff=0, font=('微软雅黑', 10))
+cmds.add_cascade(label="模板", menu=file, font=('微软雅黑', 10))
+file.add_command(label="表单模板", command=m1, font=('微软雅黑', 10))
+file.add_command(label="相册模板", command=m2, font=('微软雅黑', 10))
+file.add_command(label="个人主页模板", command=m3, font=('微软雅黑', 10))
 
-help = tk.Menu(cmds, tearoff=0)
-cmds.add_cascade(label="帮助", menu=help)
-help.add_command(label="帮助", command=show_help)
-help.add_command(label="关于", command=show_info)
+help = tk.Menu(cmds, tearoff=0, font=('微软雅黑', 10))
+cmds.add_cascade(label="帮助", menu=help, font=('微软雅黑', 10))
+help.add_command(label="帮助", command=show_help, font=('微软雅黑', 10))
+help.add_command(label="关于", command=show_info, font=('微软雅黑', 10))
 
+close = tk.Menu(cmds, tearoff=0, font=('微软雅黑', 10))
+cmds.add_cascade(label="退出", menu=close, font=(
+    '微软雅黑', 10), command=lambda: root.destroy())
+close.add_command(
+    label="关闭窗口", command=lambda: root.destroy(), font=('微软雅黑', 10))
 
 root.config(menu=cmds)
 
@@ -1211,28 +1378,33 @@ button_add_js = Button(root,text="添加js文件",command=add_js_file).place(y=0
 code_input = tk.Text(root, undo=True, maxundo=10,
                      font=('微软雅黑', 10), borderwidth=0)
 line_text = Text(root, font=('微软雅黑', 10, 'bold'), takefocus=0, cursor='arrow', state='disabled',
-             bd=0, width=8)
-scroll = tk.Scrollbar(root)
-#line_text.pack(fill=Y, side=LEFT, pady=30)
-code_input.pack(side=TOP, fill=BOTH, expand=True)
+                 bd=0, width=8)
+scroll = tk.Scrollbar(code_input)
+
+# TODO 行数
+line_text.pack(fill=Y, side=LEFT, pady=30)
+
+code_input.pack(side=TOP, fill=BOTH, expand=True, pady=30)
 line_text.tag_config("nct", justify='center')
+# line_text.pack(fill=Y, side=LEFT)
 scroll.pack(fill=Y, side=RIGHT, pady=30)
 
 listbox = tk.Listbox(root, width=50, font=('微软雅黑', 10), fg='orange')
 
 line_label = tk.Label(root, textvariable=line_num_text_l,
                       font=('微软雅黑', 10))
+# line_label.pack(side=LEFT, fill=Y)
 
 
-r_menu = tk.Menu(root)
-r_menu.add_cascade(label='保存(S)', command=save_html_code)
-r_menu.add_cascade(label='打开(P)', command=open_html)
-r_menu.add_cascade(label='重做(D)', command=redo)
-r_menu.add_cascade(label='运行(R)', command=run_html)
-r_menu.add_cascade(label='撤销(Z)', command=cancel)
-r_menu.add_cascade(label='恢复(Y)', command=recovery)
-r_menu.add_cascade(label='格式化(G)', command=format)
-r_menu.add_cascade(label='自动修复(内测)(F)', command=fix)
+r_menu = tk.Menu(root, font=('微软雅黑', 10))
+r_menu.add_cascade(label='保存(S)', command=save_html_code, font=('微软雅黑', 10))
+r_menu.add_cascade(label='打开(P)', command=open_html, font=('微软雅黑', 10))
+r_menu.add_cascade(label='重做(D)', command=redo, font=('微软雅黑', 10))
+r_menu.add_cascade(label='运行(R)', command=run_html, font=('微软雅黑', 10))
+r_menu.add_cascade(label='撤销(Z)', command=cancel, font=('微软雅黑', 10))
+r_menu.add_cascade(label='恢复(Y)', command=recovery, font=('微软雅黑', 10))
+r_menu.add_cascade(label='格式化(G)', command=format, font=('微软雅黑', 10))
+r_menu.add_cascade(label='自动修复(内测)(F)', command=fix, font=('微软雅黑', 10))
 showPopoutMenu(code_input, r_menu)
 default_code = '''<!DOCTYPE html>
 <html lang="zh">
@@ -1269,12 +1441,15 @@ root.bind('<Control f>', find_text)
 code_input.bind('<Key>', on_key_pressed)
 code_input.bind('<Return>', auto_tab)
 
-# root.update()
+root.bind(custom_event_name, update_code_input)
 
+# root.update()
+code_input.tag_configure("set", foreground="#D1F1A9")
 code_input.tag_configure("tag", foreground="orange")
 code_input.tag_configure("info", background="yellow")
 code_input.tag_configure("error", background="red")
 code_input.tag_configure("find", background="#FF6600")
+
 # code_input.tag_configure("properties", foreground="yellow")
 # properties_list = ["class","id","name","action","title","style","value","hidden","accesskey","onclick","onload"]
 # properties_pos_dict = {}
@@ -1297,41 +1472,55 @@ input_keys = [
 while c:
     '''for tag in code_input.tag_names():00
         code_input.tag_remove("tag","1.0","end")'''
-    # try:
-    tag_start_pos = code_input.search("<", start, stopindex=END)
-    tag_end_pos = code_input.search(">", start1, stopindex=END)
-    '''except Exception as e:
-        n = 0
-        print(e)
-        start = 1.0
-        start1 = 1.0'''
-    if not tag_start_pos or not tag_end_pos:
-        if any(keyboard.is_pressed(key) for key in input_keys) and n >= 100:
-            # if n==50:
-            for tag in code_input.tag_names():
-                code_input.tag_remove("tag", "1.0", "end")
-            n = 0
+    try:
+        tag_start_pos = code_input.search("<", start, stopindex=END)
+        tag_end_pos = code_input.search(">", start1, stopindex=END)
+        if not tag_start_pos or not tag_end_pos:
+            if any(keyboard.is_pressed(key) for key in input_keys) and n >= 100:
+                # if n==50:
+                for tag in code_input.tag_names():
+                    code_input.tag_remove("tag", "1.0", "end")
+                n = 0
+            else:
+                n += 1
+                pass
+            start = 1.0
+            start1 = 1.0
+            sleep(0.01)
         else:
-            n += 1
-            pass
-        start = 1.0
-        start1 = 1.0
-        sleep(0.01)
-    else:
-        tag_end_pos = str(getIndex(code_input, tag_end_pos)[
-                          0]) + "." + str(getIndex(code_input, tag_end_pos)[1] + 1)
-        # print(pos1)
-        code_input.tag_add("tag", tag_start_pos, str(tag_end_pos))
-        start = tag_start_pos + "+1c"
-        start1 = str(tag_end_pos) + "+1c"
+            tag_end_pos = str(getIndex(code_input, tag_end_pos)[
+                0]) + "." + str(getIndex(code_input, tag_end_pos)[1] + 1)
+            # print(code_input.search("meta",tag_start_pos,tag_end_pos))
+            if code_input.search("meta", tag_start_pos, tag_end_pos) == "" and code_input.search("title", tag_start_pos, tag_end_pos) == "" and code_input.search("link", tag_start_pos, tag_end_pos) == "":
+                code_input.tag_add("tag", tag_start_pos, str(tag_end_pos))
+            start = tag_start_pos + "+1c"
+            start1 = str(tag_end_pos) + "+1c"
 
-    line_num_text = "共" + \
-        str(get_line_num()[0]) + "行," + str(get_line_num()[1]) + "个字符"
-    line_num_text_l.set(line_num_text)
-    # print(line_line_text)
-    root.update()
+        find_set_tag()
 
+        line_num_text = "共" + \
+            str(get_line_num()[0]) + "行," + str(get_line_num()[1]) + "个字符"
+        line_num_text_l.set(line_num_text)
+
+        line_text.configure(state="normal")
+        line_text.delete("1.0", "end")
+        rn = 0
+        auto_return_pos = get_line_num()[2]
+        for i in range(get_line_num()[0]):
+            # if auto_return_pos != {}:
+            #     print(auto_return_pos)
+            line_text.insert(str(i+rn+1)+'.0', " "+str(i+1)+"\n")
+            for posk in auto_return_pos:
+                if i == posk:
+                    line_text.insert(str(i+rn+1)+'.0',
+                                     auto_return_pos[posk]*" \n")
+                    rn += auto_return_pos[posk]
+
+        # print(line_line_text)
+        root.update()
+    except:
+        pass
 
 root.mainloop()
-#for tag in code_input.tag_names():
+# for tag in code_input.tag_names():
 #    code_input.tag_remove("tag", "1.0", "end")
