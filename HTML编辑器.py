@@ -34,32 +34,22 @@ from urllib.parse import parse_qs, urlparse
 
 
 global css_code_input, css, open_path
-encoding_s = "utf-8"
-recorded_text = ""
-recorded_text_attr = ""
-# httpd = None
-c = True
-url = 'https://validator.w3.org/nu/?out=json'
+encoding_s = "utf-8" # 编码格式
+recorded_text = "" # 自动补全记录输入文本(HTML标签)
+recorded_text_attr = "" # 自动补全记录输入文本(HTML属性)
+c = True # 循环处理运行状态
+url = 'https://validator.w3.org/nu/?out=json' # HTML验证URL
 headers = {
     'Content-Type': 'text/html; charset=utf-8',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36'
-}
-open_path = ""
-custom_event_name = "<<UpdateCode>>"
+} # HTML请求头
+open_path = "" # 打开文件路径
 
-
-def on_activated(toast_id, activated_kind, action_arg=None):
-    global page_url
-    pyperclip.copy(page_url)
-
-
-toast = ToastNotifier()
+toast = ToastNotifier() # 消息提示类
 
 # HTML基本操作
 
 # HTML保存
-
-
 def save_html_code(*args):
     global open_path
     code = code_input.get("1.0", END)
@@ -75,9 +65,8 @@ def save_html_code(*args):
     toast.show_toast("代码保存成功", "文件路径:"+open_path +
                      "\n编码方式:"+encoding_s, threaded=True)
     root.title("HTML编辑器-" + open_path + "-" + encoding_s)
+    
 # HTML预览
-
-
 def run_html(*args):
     global open_path, page_url
     code = code_input.get("1.0", END)
@@ -89,17 +78,15 @@ def run_html(*args):
     webbrowser.open(page_url)
     toast.show_toast("正在预览HTML", "如未弹出窗口，请在浏览器输入以下url:\n" +
                      page_url, threaded=True)
+    
 # HTML另存为
-
-
 def save_copy(*args):
     path = filedialog.asksaveasfilename(
         title="保存", filetype=[("网页文件", "*.html"), ("文本文件", "*.txt")])
     with open(path+".html", "w")as f:
         f.write(code_input.get("1.0", END))
+        
 # 保存预览png
-
-
 def save_img(*args):
     code = code_input.get("1.0", END)
     config = imgkit.config(
@@ -110,9 +97,8 @@ def save_img(*args):
         path = path + ".png"
     imgkit.from_string(code, path, options={
                        'format': 'png', 'width': '800', 'height': '600'}, config=config)
+    
 # 保存代码png
-
-
 def code_to_image(*args):
 
     code = code_input.get("1.0", END)
@@ -128,11 +114,12 @@ def code_to_image(*args):
     print(f"Image file exported to: {path}")
 
 
+
+
 # HTML在线调试
-message_queue = Queue()
+message_queue = Queue() # 创建跨线程消息队列
+
 # 100ms更新代码输入框
-
-
 def update_code_input(queue):
     if not queue.empty():
         code_input.delete("1.0", tk.END)
@@ -140,8 +127,6 @@ def update_code_input(queue):
     root.after(100, update_code_input, queue)
 
 # 创建本地服务器
-
-
 def add_server(def_code, save_code_page, queue):
     # global httpd
 
@@ -158,6 +143,7 @@ def add_server(def_code, save_code_page, queue):
                 # 编辑器页面
                 response_content = def_code
             elif '/save_code' in self.path:
+                # 同步代码
                 queue_params = parse_qs(urlparse(self.path).query)
                 html_code = queue_params.get('code', [None])[0]
                 queue.put(html_code)
@@ -179,8 +165,8 @@ def add_server(def_code, save_code_page, queue):
 
             # self.wfile.write(def_code.encode('utf-8'))
 
-    # 创建非阻塞的HTTP服务器
 
+    # 创建非阻塞的HTTP服务器
     class NonBlockingHTTPServer(http.server.ThreadingHTTPServer):
         def server_bind(self):
             self.socket.settimeout(1)
@@ -188,14 +174,13 @@ def add_server(def_code, save_code_page, queue):
             self.socket.settimeout(None)
 
     # 创建服务器并在后台线程中运行
-
     def RunWebServer():
         global httpd
         server_address = ('localhost', 8000)
         httpd = NonBlockingHTTPServer(server_address, MyHandler)
         httpd.serve_forever()
+        
     # 关闭服务器
-
     def on_closing():
         global httpd
         try:
@@ -204,6 +189,7 @@ def add_server(def_code, save_code_page, queue):
         except:
             pass
         root.destroy()
+    
     # 重启服务器
     global httpd
     try:
@@ -219,9 +205,8 @@ def add_server(def_code, save_code_page, queue):
     webbrowser.open("http://127.0.0.1:8000/editor")
     # 绑定窗口关闭事件
     root.protocol("WM_DELETE_WINDOW", on_closing)
+    
 # 生成网页代码
-
-
 def online_debug(*args):
     html_code = code_input.get("1.0", END)
     def_code = f'''
@@ -330,10 +315,11 @@ def online_debug(*args):
     '''
     add_server(def_code, save_code_page, message_queue)
     update_code_input(message_queue)
+    
+    
+    
 
 # 打开HTML
-
-
 def open_html(*args):
     global open_path, start, start1, encoding_s
     start = 1.0
@@ -360,7 +346,7 @@ def open_html(*args):
     code_input.delete("1.0", "end")
     code_input.insert(1.0, default_code)
 
-
+# 自定义格式化
 def custom_prettify(soup):
     for element in soup:
         if element.name:
@@ -380,9 +366,8 @@ def custom_prettify(soup):
                         child.insert_after("\n")
 
     return soup
+
 # 格式化
-
-
 def format(*args):
     code = code_input.get("1.0", END)
     soup = bs4.BeautifulSoup(code, 'html.parser')
@@ -403,9 +388,8 @@ def format(*args):
     code_input.delete("1.0", END)
     code_input.insert('insert', half_formatted_html.split("\n")[
                       0]+"\n"+formatted_html)
+    
 # 压缩
-
-
 def compress_html():
     html = code_input.get('1.0', tk.END)
     # 删除HTML中的注释
@@ -422,9 +406,8 @@ def compress_html():
 
     code_input.delete('1.0', tk.END)
     code_input.insert('1.0', html)
+    
 # 自动修复
-
-
 def fix(*args):
     code = code_input.get("1.0", END)
     soup = bs4.BeautifulSoup(code, 'html5lib')
@@ -1198,7 +1181,7 @@ def m3():
 # 关于、帮助
 info = '''名称:HTML编辑器
 作者：王铭瑄
-版本:3.4.0
+版本:3.4.1
 更新日志:
 2023/5/1:新增——自动填充
 2023/6/10:修复——文件编码bug(UnicodeDecodeError: 'gbk' codec can't decode byte 0xa5 in position xxx: illegal multibyte sequence)
@@ -1215,6 +1198,7 @@ info = '''名称:HTML编辑器
 2024/4/22:新增——显示行数
 2024/4/22:修复——自动缩进
 2024/4/22:新增——meta、title、link标签的青色标记
+2024/5/25:修复——行数栏不同步滚动bug
 '''
 help_info = '''1.输入操作
 复制          Ctrl+C
@@ -1363,7 +1347,12 @@ def showPopoutMenu(w, menu):
         menu.post(event.x + w.winfo_rootx(), event.y + w.winfo_rooty())
         w.update()
     w.bind('<Button-3>', popout)
-
+    
+def sync_scroll(event):
+    if event.delta > 0:
+        line_text.yview_scroll(-1, "units")
+    else:
+        line_text.yview_scroll(1, "units")
 
 line_num = 0
 line_num_text = ""
@@ -1381,7 +1370,7 @@ line_text = Text(root, font=('微软雅黑', 10, 'bold'), takefocus=0, cursor='a
                  bd=0, width=8)
 scroll = tk.Scrollbar(code_input)
 
-# TODO 行数
+
 line_text.pack(fill=Y, side=LEFT, pady=30)
 
 code_input.pack(side=TOP, fill=BOTH, expand=True, pady=30)
@@ -1440,8 +1429,7 @@ root.bind('<Control F>', fix)
 root.bind('<Control f>', find_text)
 code_input.bind('<Key>', on_key_pressed)
 code_input.bind('<Return>', auto_tab)
-
-root.bind(custom_event_name, update_code_input)
+code_input.bind('<MouseWheel>', sync_scroll)
 
 # root.update()
 code_input.tag_configure("set", foreground="#D1F1A9")
@@ -1450,9 +1438,6 @@ code_input.tag_configure("info", background="yellow")
 code_input.tag_configure("error", background="red")
 code_input.tag_configure("find", background="#FF6600")
 
-# code_input.tag_configure("properties", foreground="yellow")
-# properties_list = ["class","id","name","action","title","style","value","hidden","accesskey","onclick","onload"]
-# properties_pos_dict = {}
 start = 1.0
 start1 = 1.0
 root.update()
@@ -1516,11 +1501,13 @@ while c:
                                      auto_return_pos[posk]*" \n")
                     rn += auto_return_pos[posk]
 
-        # print(line_line_text)
+        # 设置line_text的可视部分与code_input相同
+        code_input_visible = code_input.yview()
+        line_text.yview_moveto(code_input_visible[0])
+        
         root.update()
     except:
         pass
 
 root.mainloop()
-# for tag in code_input.tag_names():
-#    code_input.tag_remove("tag", "1.0", "end")
+
