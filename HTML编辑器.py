@@ -740,9 +740,7 @@ def update_x():
     global c
     c = False
     root.destroy()
-    sleep(0.1)
-    quit(0)
-
+    
 # 常用语句
 # html
 
@@ -943,7 +941,7 @@ def auto_completer(text, m):
         cursor_coords = code_input.bbox(code_input.index(tk.INSERT))
         listbox_width = min(400, code_input.winfo_width() - cursor_coords[0])
         listbox.place(x=cursor_coords[0], y=cursor_coords[1] +
-                      cursor_coords[3], width=listbox_width, height=100)
+                      cursor_coords[3]+50, width=listbox_width, height=100)
     else:
         listbox.delete(0, tk.END)
         listbox.place_forget()
@@ -996,7 +994,7 @@ def on_text_recorded(event):
     global recorded_text
     if event.char == '>':
         code_input.unbind("<KeyRelease>")
-        if (recorded_text[1:].split(" ")[0] in html_single_tags) == False:
+        if (recorded_text[1:].split(" ")[0] in html_single_tags or "/" in recorded_text) == False:
             add_tag = "</"+recorded_text[1:].split(" ")[0]+">"
             index = code_input.index(tk.INSERT)
             code_input.insert(index, add_tag)
@@ -1015,7 +1013,7 @@ def on_text_recorded_attr(event):
     global recorded_text_attr, recorded_text
     if event.char == '>':
         code_input.unbind("<KeyRelease>")
-        if (recorded_text[1:].split(" ")[0] in html_single_tags) == False:
+        if (recorded_text[1:].split(" ")[0] in html_single_tags or "/" in recorded_text) == False:
             add_tag = "</"+recorded_text[1:].split(" ")[0]+">"
             index = code_input.index(tk.INSERT)
             code_input.insert(index, add_tag)
@@ -1029,6 +1027,9 @@ def on_text_recorded_attr(event):
             recorded_text_attr += event.char
             auto_completer(recorded_text_attr, 1)
 
+def listbox_focus_out(event):
+    code_input.unbind("<KeyRelease>")
+    listbox.place_forget()
 
 def find_tag_start():
     index = code_input.index(tk.INSERT)
@@ -1181,9 +1182,9 @@ def m3():
 # 关于、帮助
 info = '''名称:HTML编辑器
 作者：王铭瑄
-版本:3.4.1
+版本:3.4.3
 更新日志:
-2023/5/1:新增——自动填充
+2023/5/1:新增——自动补全
 2023/6/10:修复——文件编码bug(UnicodeDecodeError: 'gbk' codec can't decode byte 0xa5 in position xxx: illegal multibyte sequence)
 2023/6/11:新增——格式化、自动修复
 2023/6/12:新增——关于、帮助
@@ -1193,12 +1194,15 @@ info = '''名称:HTML编辑器
 2023/7/8:新增——代码压缩
 2023/8/7:调整——黑客代码风格颜色
 2023/8/8:调整——自动填充候选框位置
-2023/9/9:修复——自动填充bug
+2023/9/9:修复——自动补全bug
 2024/2/12:新增——自动缩进
 2024/4/22:新增——显示行数
-2024/4/22:修复——自动缩进
+2024/4/22:修复——自动缩进bug
 2024/4/22:新增——meta、title、link标签的青色标记
 2024/5/25:修复——行数栏不同步滚动bug
+2024/5/26:修复——自动补全bug
+2024/5/26:修复——关闭窗口事件回调函数bug
+2
 '''
 help_info = '''1.输入操作
 复制          Ctrl+C
@@ -1430,6 +1434,7 @@ root.bind('<Control f>', find_text)
 code_input.bind('<Key>', on_key_pressed)
 code_input.bind('<Return>', auto_tab)
 code_input.bind('<MouseWheel>', sync_scroll)
+code_input.bind('<Button-1>', listbox_focus_out)
 
 # root.update()
 code_input.tag_configure("set", foreground="#D1F1A9")
