@@ -731,6 +731,23 @@ def green_code_color():
     listbox.config(bg="#0A0A0A", borderwidth=0,
                    highlightthickness=0, highlightbackground="#001126")
 
+style_dict = {
+    "light": {"fg": "black", "bg": "white", "ltf": "black", "lbb": "#F3F3F3", "tag": "#CD3131", "set": "blue"},
+    "modern light": {"fg": "#3B3B3B", "bg": "white", "ltf": "#171184", "lbb": "#EEEEEE", "tag": "#CD3131", "set": "#A06BDC"},
+    "quiet light": {"fg": "#333333", "bg": "#F5F5F5", "ltf": "#A06BDC", "lbb": "#E9E9E9", "tag": "#660000", "set": "#A06BDC"},
+    "hacker": {"fg": "green", "bg": "#001115", "ltf": "white", "lbb": "#001126", "tag": "orange", "set": "#D1F1A9"},
+    "dark": {"fg": "white", "bg": "#1E1E1E", "ltf": "#858585", "lbb": "#252526", "tag": "#F44746", "set": "#D1F1A9"}
+}
+
+def set_color(style):
+    code_input.config(fg=style_dict[style]["fg"], bg=style_dict[style]["bg"])
+    code_input.config(insertbackground=style_dict[style]["fg"])
+    line_text.config(fg=style_dict[style]["ltf"], bg=style_dict[style]["bg"])
+    root.config(bg=style_dict[style]["bg"])
+    listbox.config(bg=style_dict[style]["lbb"], borderwidth=0,
+                    highlightthickness=0, highlightbackground=style_dict[style]["bg"])
+    code_input.tag_configure("tag", foreground=style_dict[style]["tag"])
+    code_input.tag_configure("set", foreground=style_dict[style]["set"])
 
 def getIndex(text, index):
     return tuple(map(int, str.split(text.index(index), ".")))
@@ -1182,7 +1199,7 @@ def m3():
 # 关于、帮助
 info = '''名称:HTML编辑器
 作者：王铭瑄
-版本:3.4.3
+版本:3.4.4
 更新日志:
 2023/5/1:新增——自动补全
 2023/6/10:修复——文件编码bug(UnicodeDecodeError: 'gbk' codec can't decode byte 0xa5 in position xxx: illegal multibyte sequence)
@@ -1202,7 +1219,7 @@ info = '''名称:HTML编辑器
 2024/5/25:修复——行数栏不同步滚动bug
 2024/5/26:修复——自动补全bug
 2024/5/26:修复——关闭窗口事件回调函数bug
-2
+2024/5/27:新增——主题样式
 '''
 help_info = '''1.输入操作
 复制          Ctrl+C
@@ -1279,11 +1296,15 @@ order_file.add_command(label="添加js文件", command=add_js_file, font=('微�
 
 setcolor = tk.Menu(cmds, tearoff=0, font=('微软雅黑', 10))
 cmds.add_cascade(label="主题", menu=setcolor, font=('微软雅黑', 10))
-setcolor.add_command(label="字体颜色", command=t_color, font=('微软雅黑', 10))
-setcolor.add_command(label="背景颜色", command=bg_color, font=('微软雅黑', 10))
-setcolor.add_command(label="浅色", command=reset_color, font=('微软雅黑', 10))
+setcolor.add_command(label="浅色", command=lambda: set_color("light"), font=('微软雅黑', 10))
+setcolor.add_command(label="现代浅色", command=lambda: set_color("modern light"), font=('微软雅黑', 10))
+setcolor.add_command(label="quiet light", command=lambda: set_color("quiet light"), font=('微软雅黑', 10))
+setcolor.add_command(label="深色", command=lambda: set_color("dark"), font=('微软雅黑', 10))
 setcolor.add_command(
-    label="黑客代码(深色)", command=green_code_color, font=('微软雅黑', 10))
+    label="黑客代码", command=lambda: set_color("hacker"), font=('微软雅黑', 10))
+setcolor.add_command(label="自定义字体颜色", command=t_color, font=('微软雅黑', 10))
+setcolor.add_command(label="自定义背景颜色", command=bg_color, font=('微软雅黑', 10))
+
 
 quick_tag = tk.Menu(cmds, tearoff=0, font=('微软雅黑', 10))
 cmds.add_cascade(label="快捷标签", menu=quick_tag, font=('微软雅黑', 10))
