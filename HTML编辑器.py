@@ -724,19 +724,14 @@ def reset_color():
 
 
 def green_code_color():
-    code_input.config(fg='green', bg='#001115')
-    code_input.config(insertbackground="green")
-    line_text.config(fg='white', bg='#001115')
-    root.config(bg='#001115')
-    listbox.config(bg="#0A0A0A", borderwidth=0,
-                   highlightthickness=0, highlightbackground="#001126")
+    set_color("hacker")
 
 style_dict = {
-    "light": {"fg": "black", "bg": "white", "ltf": "black", "lbb": "#F3F3F3", "tag": "#CD3131", "set": "blue"},
-    "modern light": {"fg": "#3B3B3B", "bg": "white", "ltf": "#171184", "lbb": "#EEEEEE", "tag": "#CD3131", "set": "#A06BDC"},
-    "quiet light": {"fg": "#333333", "bg": "#F5F5F5", "ltf": "#A06BDC", "lbb": "#E9E9E9", "tag": "#660000", "set": "#A06BDC"},
-    "hacker": {"fg": "green", "bg": "#001115", "ltf": "white", "lbb": "#001126", "tag": "orange", "set": "#D1F1A9"},
-    "dark": {"fg": "white", "bg": "#1E1E1E", "ltf": "#858585", "lbb": "#252526", "tag": "#F44746", "set": "#D1F1A9"}
+    "light": {"fg": "black", "bg": "white", "slbg": "#EEEEEE", "ltf": "#237893", "sltf": "#0B216F", "lbb": "#F3F3F3", "tag": "#CD3131", "set": "#CD3131"},
+    "modern light": {"fg": "#3B3B3B", "bg": "white", "slbg": "#EEEEEE", "ltf": "#6E7681", "sltf": "#171184", "lbb": "#EEEEEE", "tag": "#CD3131", "set": "#A06BDC"},
+    "quiet light": {"fg": "#333333", "bg": "#F5F5F5", "slbg": "#E4F6D4", "ltf": "#6D705B", "sltf": "#A06BDC", "lbb": "#E9E9E9", "tag": "#660000", "set": "#A06BDC"},
+    "hacker": {"fg": "green", "bg": "#001115", "slbg": "#282828", "ltf": "#858585", "sltf": "#C6C6C6", "lbb": "#001126", "tag": "orange", "set": "#D1F1A9"},
+    "dark": {"fg": "white", "bg": "#1E1E1E", "slbg": "#282828", "ltf": "#858585", "sltf": "#C6C6C6", "lbb": "#252526", "tag": "#F44746", "set": "#D1F1A9"}
 }
 
 def set_color(style):
@@ -748,6 +743,16 @@ def set_color(style):
                     highlightthickness=0, highlightbackground=style_dict[style]["bg"])
     code_input.tag_configure("tag", foreground=style_dict[style]["tag"])
     code_input.tag_configure("set", foreground=style_dict[style]["set"])
+    code_input.tag_configure("sl", background=style_dict[style]["slbg"])
+    line_text.tag_configure("slt", foreground=style_dict[style]["sltf"])
+    
+def on_line_select(event):
+    index = code_input.index(tk.INSERT)
+    
+
+def on_FocusOut(event):
+    line_text.tag_remove("slt","1.0", "end")
+    code_input.tag_remove("sl","1.0", "end")
 
 def getIndex(text, index):
     return tuple(map(int, str.split(text.index(index), ".")))
@@ -1199,7 +1204,7 @@ def m3():
 # 关于、帮助
 info = '''名称:HTML编辑器
 作者：王铭瑄
-版本:3.4.4
+版本:3.4.5
 更新日志:
 2023/5/1:新增——自动补全
 2023/6/10:修复——文件编码bug(UnicodeDecodeError: 'gbk' codec can't decode byte 0xa5 in position xxx: illegal multibyte sequence)
@@ -1220,6 +1225,7 @@ info = '''名称:HTML编辑器
 2024/5/26:修复——自动补全bug
 2024/5/26:修复——关闭窗口事件回调函数bug
 2024/5/27:新增——主题样式
+2024/6/2:新增——行选中时的样式
 '''
 help_info = '''1.输入操作
 复制          Ctrl+C
@@ -1393,6 +1399,9 @@ code_input = tk.Text(root, undo=True, maxundo=10,
                      font=('微软雅黑', 10), borderwidth=0)
 line_text = Text(root, font=('微软雅黑', 10, 'bold'), takefocus=0, cursor='arrow', state='disabled',
                  bd=0, width=8)
+# on_line_select(None)
+# code_input.mark_set("insert", "1.0")
+# on_line_select(None)
 scroll = tk.Scrollbar(code_input)
 
 
@@ -1429,8 +1438,7 @@ default_code = '''<!DOCTYPE html>
     <body>
         <p>This is a test message</p>
     </body>
-</html>
-'''
+</html>'''
 global on_closing
 code_input.insert("end", default_code)
 # root.protocol("WM_DELETE_WINDOW",ask_save_html)
@@ -1456,6 +1464,8 @@ code_input.bind('<Key>', on_key_pressed)
 code_input.bind('<Return>', auto_tab)
 code_input.bind('<MouseWheel>', sync_scroll)
 code_input.bind('<Button-1>', listbox_focus_out)
+code_input.bind('<Button-1>', on_line_select)
+code_input.bind('<FocusOut>', on_FocusOut)
 
 # root.update()
 code_input.tag_configure("set", foreground="#D1F1A9")
@@ -1463,6 +1473,11 @@ code_input.tag_configure("tag", foreground="orange")
 code_input.tag_configure("info", background="yellow")
 code_input.tag_configure("error", background="red")
 code_input.tag_configure("find", background="#FF6600")
+code_input.tag_configure("sl", background="#001115")
+line_text.tag_configure("slt", foreground="#C6C6C6")
+
+#code_input.tag_add("sl", f"{1}.0", f"{1}.end")
+    
 
 start = 1.0
 start1 = 1.0
@@ -1530,6 +1545,14 @@ while c:
         # 设置line_text的可视部分与code_input相同
         code_input_visible = code_input.yview()
         line_text.yview_moveto(code_input_visible[0])
+        
+        # 获取光标所在行并标记
+        line = code_input.index(tk.INSERT).split('.')[0]
+        line_text.configure(state="normal")
+        line_text.tag_remove("slt","1.0", "end")
+        line_text.tag_add("slt", f"{line}.0", f"{line}.end")
+        code_input.tag_remove("sl","1.0","end")
+        code_input.tag_add("sl", f"{line}.0", f"{line}.end")
         
         root.update()
     except:
