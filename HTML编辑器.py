@@ -12,7 +12,7 @@ import webbrowser
 from multiprocessing import Pool
 from time import *
 from tkinter import *
-from tkinter import colorchooser, filedialog, messagebox, simpledialog
+from tkinter import colorchooser, filedialog, messagebox, simpledialog, ttk
 from queue import Queue
 
 import bs4
@@ -45,13 +45,34 @@ headers = {
 } # HTML请求头
 open_path = "" # 打开文件路径
 
+cloud_username = None
+
+
 toast = ToastNotifier() # 消息提示类
+
+
+#读取偏好文件
+preference = "{}"
+try:
+    with open("./preference.txt", "r", encoding="utf-8") as f:
+        preference = f.read()
+    try:
+        cloud_username = eval(preference)["username"]
+    except KeyError:
+        pass
+        
+except:
+    pass
 
 # HTML基本操作
 
 # HTML保存
 def save_html_code(*args):
     global open_path
+    if "cloud:" in open_path: 
+        cloud_save_code()
+        return
+    
     code = code_input.get("1.0", END)
 
     if open_path == "":
@@ -90,7 +111,7 @@ def save_copy(*args):
 def save_img(*args):
     code = code_input.get("1.0", END)
     config = imgkit.config(
-        wkhtmltoimage=r"D:\编程资料\编程语言\python\我的程序\单个程序\lib\wkhtmltoimage.exe")
+        wkhtmltoimage="./lib/wkhtmltoimage.exe")
     path = filedialog.asksaveasfilename(
         title="保存", filetype=[("图片文件", "*.png")])
     if (".png" not in path):
@@ -733,8 +754,17 @@ style_dict = {
     "hacker": {"fg": "green", "bg": "#001115", "slbg": "#282828", "ltf": "#858585", "sltf": "#C6C6C6", "lbb": "#001126", "tag": "orange", "set": "#D1F1A9"},
     "dark": {"fg": "white", "bg": "#1E1E1E", "slbg": "#282828", "ltf": "#858585", "sltf": "#C6C6C6", "lbb": "#252526", "tag": "#F44746", "set": "#D1F1A9"}
 }
-
+style_name=""
 def set_color(style):
+    global style_name,preference
+    
+    preference_dict=eval(preference)
+    preference_dict['color']=style
+    preference=str(preference_dict)
+    with open("./preference.txt", "w")as f:
+        f.write(preference)
+    
+    style_name=style
     code_input.config(fg=style_dict[style]["fg"], bg=style_dict[style]["bg"])
     code_input.config(insertbackground=style_dict[style]["fg"])
     line_text.config(fg=style_dict[style]["ltf"], bg=style_dict[style]["bg"])
@@ -1172,7 +1202,7 @@ def m1():
     global start, start1
     start = 1.0
     start1 = 1.0
-    with open("./模板1.html", "r", encoding="utf-8")as f:
+    with open("./templates/模板1.html", "r", encoding="utf-8")as f:
         m_code = f.read()
     code_input.delete("1.0", END)
     code_input.insert('insert', m_code)
@@ -1183,7 +1213,7 @@ def m2():
     global start, start1
     start = 1.0
     start1 = 1.0
-    with open("./模板2.html", "r", encoding="utf-8")as f:
+    with open("./templates/模板2.html", "r", encoding="utf-8")as f:
         m_code = f.read()
     code_input.delete("1.0", END)
     code_input.insert('insert', m_code)
@@ -1194,18 +1224,448 @@ def m3():
     global start, start1
     start = 1.0
     start1 = 1.0
-    with open("./模板3.html", "r", encoding="utf-8")as f:
+    with open("./templates/模板3.html", "r", encoding="utf-8")as f:
         m_code = f.read()
     code_input.delete("1.0", END)
     code_input.insert('insert', m_code)
     sleep(1)
 
+#云服务
+
+#登录/注册/注销
+
+#启动服务器
+def start_login_server(login_page_code, register_page_code):
+    global cloud_username
+    if cloud_username != None:
+        messagebox.showwarning("警告", "您已登录，请注销后再登录其他账号！")
+        return None
+    class MyHandler(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self):
+            global cloud_username,preference
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+
+            #渲染页面
+            if self.path == '/':
+                # 主页
+                response_content = '<h1>Welcome to HTML Editor</h1>'
+            elif self.path == '/login_page':
+                # 登录页面
+                response_content = login_page_code.replace("{error}","")
+            elif self.path == '/register_page' :
+                # 注册页面
+                response_content = register_page_code.replace("{error}","")
+                
+            #处理    
+                
+            elif '/login' in self.path:
+                queue_params = parse_qs(urlparse(self.path).query)
+                username = queue_params.get('username', [None])[0]
+                pwd = queue_params.get('pwd', [None])[0]
+                user_list=list(requests.request(url="http://www.leibeibei.cn/api/get_UPC",method="get").json()["content"])
+                flag=False
+                for user in user_list:
+                    if user[1] == username:
+                        flag=True
+                        if user[2] == pwd:
+                            cloud_username = username
+                            toast.show_toast("登录成功", f"{username},欢迎回来")
+                            
+                            preference_dict=eval(preference)
+                            preference_dict['username']=cloud_username
+                            preference=str(preference_dict)
+                            with open("./preference.txt", "w")as f:
+                                f.write(preference)
+                                
+                            response_content = '<meta charset="utf-8"><h1>登录成功，请关闭此窗口！</h1>'
+                            self.send_response(200)
+                            on_closing()
+                        else:
+                            response_content = login_page_code.replace("{error}","密码错误")
+                            #self.send_response(200)
+                if flag==False:
+                    response_content = login_page_code.replace("{error}","用户名错误")
+                    #self.send_response(200)
+            elif '/register' in self.path:
+                queue_params = parse_qs(urlparse(self.path).query)
+                username = queue_params.get('username', [None])[0]
+                pwd = queue_params.get('pwd', [None])[0]
+                pwd2 = queue_params.get('pwd2', [None])[0]
+                if pwd != pwd2:
+                    response_content = register_page_code.replace("{error}","两次密码不一致")
+
+                result = requests.request(url=f"http://www.leibeibei.cn/api/register_user?username={username}&pwd={pwd}",method="get").json()["content"]
+                if result=="用户注册成功":
+                    cloud_username = username
+                    toast.show_toast("注册成功", f"{username},欢迎加入")
+                    
+                    preference_dict=eval(preference)
+                    preference_dict['username']=cloud_username
+                    preference=str(preference_dict)
+                    with open("./preference.txt", "w")as f:
+                        f.write(preference)
+                                
+                    response_content = '<meta charset="utf-8"><h1>注册成功，请关闭此窗口！</h1>'
+                    self.send_response(200)
+                    on_closing()
+                else:
+                    response_content = register_page_code.replace("{error}","用户名已被注册")
+                    
+            else:
+                # 其他未定义路径或资源
+                response_content = '<h1>404 Not Found</h1>'
+                self.send_response(404)
+
+            self.wfile.write(response_content.encode('utf-8'))
+
+            # self.wfile.write(def_code.encode('utf-8'))
+
+
+    # 创建非阻塞的HTTP服务器
+    class NonBlockingHTTPServer(http.server.ThreadingHTTPServer):
+        def server_bind(self):
+            self.socket.settimeout(1)
+            super().server_bind()
+            self.socket.settimeout(None)
+
+    # 创建服务器并在后台线程中运行
+    def RunWebServer():
+        global httpd
+        try:
+            server_address = ('localhost', 8000)
+            httpd = NonBlockingHTTPServer(server_address, MyHandler)
+            httpd.serve_forever()
+        except:
+            pass
+        
+    # 关闭服务器
+    def on_closing():
+        global httpd
+        try:
+            httpd.server_close()
+            httpd.socket.close()
+        except:
+            pass
+        #root.destroy()
+        #root.attributes("-topmost", 1)
+    
+    # 重启服务器
+    global httpd
+    try:
+        # httpd = NonBlockingHTTPServer(('localhost', 8000), MyHandler)
+        httpd.server_close()
+        httpd.socket.close()
+    except:
+        pass
+    server_thread = threading.Thread(target=RunWebServer)
+    server_thread.start()
+    # 弹出窗口
+    root.attributes("-topmost", 0)
+    webbrowser.open("http://127.0.0.1:8000/login_page")
+    # 绑定窗口关闭事件
+    root.protocol("WM_DELETE_WINDOW", on_closing)
+def online_login(*args):
+    login_page_code = '''
+    <!DOCTYPE html>
+    <html lang="en">
+
+    <head>
+        <meta charset="utf-8">
+        <title>登录</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0" />
+        <link href="http://www.leibeibei.cn/static/cdn_bootstrap/bootstrap512.min.css" rel="stylesheet">
+        <script src="http://www.leibeibei.cn/static/cdn_bootstrap/bootstrap512.bundle.min.js"></script>
+        <link href="http://www.leibeibei.cn/static/cdn_bootstrap/bootstrap523.min.css" rel="stylesheet"
+        integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
+        <script src="http://www.leibeibei.cn/static/cdn_bootstrap/bootstrap523.bundle.min.js"
+        integrity="sha384-/mhDoLbDldZc3qpsJHpLogda//BVZbgYuw6kof4u2FrCedxOtgRZDTHgHUhOCVim"
+        crossorigin="anonymous"></script>
+
+        <style type="text/css">
+            .input,
+            select {
+                margin: 2rem 0rem;
+                height: 2rem;
+            }
+
+            .btno {
+                height: 3rem;
+                width: 4rem;
+            }
+
+            .login-btn {
+                width: 24rem;
+                height: 3rem;
+                color: white;
+                background-color: purple;
+            }
+
+            .form-shadow-size {
+                width: 30%;
+                margin-left: 35%;
+                margin-top: 12%;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div class="shadow p-4 mb-4 bg-white form-shadow-size d-grid" align="center" id="shadow">
+            <center><h1><b>登录</b></h1></center>
+            <form action="/login" method="get" class="was-validated">
+                <div class="form-floating  mb-3 mt-3">
+                    <input placeholder="请输入" required name="username" class="form-control input"></input>
+                    <label for="username">用户名:</label>
+                    <div class="valid-feedback">有效的。</div>
+                </div>
+                <div class="form-floating  mb-3 mt-3">
+                    <input placeholder="请输入" required type="password" name="pwd" class="form-control input"></input>
+                    <label for="password">密码:</label>
+                    <div class="valid-feedback">有效的。</div>
+                </div>
+                <center><div class="g-recaptcha" data-sitekey="6LfbDNEmAAAAAMyizoAnogNKViSjlFpzW1eGOboo" data-action="LOGIN"></div></center>
+                <!--<div class="form-check">
+                        <input class="form-check-input" style="position:relative;left:15px;" type="checkbox" id="remember" name="remember" checked>
+                        <label style="position:relative;left:15px;" class="form-check-label">31天内免登录</label>
+                    </div>-->
+                <p style="color:red;text-align:center;">{error}</p>
+                <button type="submit" class="btn btn-success" style="width:100%">登录</button>
+                <hr>
+                <a href="/register_page" style="text-decoration:none;"><button type="button" class="btn btn-outline-primary"
+                        style="width:100%">注册</button></a>
+            </form>
+        </div>
+        <script>
+            var userAgent = navigator.userAgent.toLowerCase();
+            if (userAgent.includes("mobile") || userAgent.includes("mobi")) {
+            // 用户使用的是移动设备（手机）
+            console.log("用户使用的是手机");
+            var div = document.getElementById("shadow");
+            while (div.firstChild) {
+            div.parentNode.insertBefore(div.firstChild, div);
+            }
+            div.parentNode.removeChild(div);
+            } else {
+            // 用户使用的是电脑
+            console.log("用户使用的是电脑");
+            }
+
+        </script>
+    </body>
+
+    </html>
+    '''
+    register_page_code = '''
+    <!DOCTYPE html>
+    <html lang="en">
+
+    <head>
+        <meta charset="utf-8">
+        <title>注册</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0" />
+        <link href="http://www.leibeibei.cn/static/cdn_bootstrap/bootstrap512.min.css" rel="stylesheet">
+        <script src="http://www.leibeibei.cn/static/cdn_bootstrap/bootstrap512.bundle.min.js"></script>
+        <link href="http://www.leibeibei.cn/static/cdn_bootstrap/bootstrap523.min.css" rel="stylesheet"
+        integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
+        <script src="http://www.leibeibei.cn/static/cdn_bootstrap/bootstrap523.bundle.min.js"
+        integrity="sha384-/mhDoLbDldZc3qpsJHpLogda//BVZbgYuw6kof4u2FrCedxOtgRZDTHgHUhOCVim"
+        crossorigin="anonymous"></script>
+        <style type="text/css">
+            .input,
+            select {
+                    margin: 2rem 0rem;
+                    height: 2rem;
+            }
+
+
+
+            .btno {
+                    height: 3rem;
+                    width: 4rem;
+            }
+
+            .login-btn {
+                    width: 24rem;
+                    height: 3rem;
+                    color: white;
+                    background-color: purple;
+            }
+            .form-shadow-size {
+                width: 30%;
+                margin-left: 35%;
+                margin-top: 5%;
+            }
+        </style>
+    </head>
+
+    <body>
+
+            <div class="shadow p-4 mb-4 bg-white form-shadow-size d-grid" align="center" id="shadow">
+                    <center><h1><b>注册</b></h1></center>
+                    <form action="/register" method="get" class="was-validated" id="register_form">
+                            <div class="form-floating  mb-3 mt-3">
+                                    <input placeholder="请输入" required name="username" class="form-control input"></input>
+                                    <label for="username">用户名:</label>
+                                    <div class="invalid-feedback"></div>
+                            </div>
+                            <div class="form-floating  mb-3 mt-3">
+                                    <input placeholder="请输入" required type="password" name="pwd" class="form-control input"></input>
+                                    <label for="password1">密码:</label>
+                                    <div class="invalid-feedback"></div>
+                            </div>
+                            <div class="form-floating  mb-3 mt-3">
+                                    <input placeholder="请输入" required type="password" name="pwd2"
+                                            class="form-control input"></input>
+                                    <label for="password2">再次输入密码:</label>
+                                    <div class="invalid-feedback">两次密码不一致</div>
+                            </div>
+                            <center><div class="g-recaptcha" data-sitekey="6LfbDNEmAAAAAMyizoAnogNKViSjlFpzW1eGOboo" data-action="LOGIN"></div></center>
+                            <p style="color:red;text-align:center;">{error}</p>
+                            <button type="submit" class="btn btn-success" style="width:100%">注册并登录</button>
+                            <hr>
+                            <a href="/login_page" style="text-decoration:none;"><button type="button" class="btn btn-outline-primary"
+                                    style="width:100%">登录</button></a>
+                    </form>
+                    
+            </div>
+            <script>
+                    var userAgent = navigator.userAgent.toLowerCase();
+                    if (userAgent.includes("mobile") || userAgent.includes("mobi")) {
+                    // 用户使用的是移动设备（手机）
+                    console.log("用户使用的是手机");
+                    var div = document.getElementById("shadow");
+                    while (div.firstChild) {
+                    div.parentNode.insertBefore(div.firstChild, div);
+                    }
+                    div.parentNode.removeChild(div);
+                    } else {
+                    // 用户使用的是电脑
+                    console.log("用户使用的是电脑");
+                    }
+
+            </script>
+    </body>
+
+    </html>
+    '''
+    start_login_server(login_page_code,register_page_code)
+    
+def cloud_logout(*args):
+    global cloud_username,preference
+    if cloud_username == None:
+        messagebox.showwarning("提示","您还未登录！")
+        return None
+    cloud_username = None
+    preference_dict=eval(preference)
+    del preference_dict['username']
+    preference=str(preference_dict)
+    with open("./preference.txt", "w")as f:
+        f.write(preference)
+    toast.show_toast("已退出登录","感谢您使用云服务！")
+
+def cloud_save_code(*args):
+    global cloud_username
+    if cloud_username == None:
+        messagebox.showwarning("提示","您还未登录！")
+        return None
+    code=code_input.get("1.0",END)
+    if "cloud:" not in open_path:
+        filename=simpledialog.askstring("提示","请输入文件名：")
+    else:
+        filename=open_path.split(":")[1]
+    code = code.replace("\"","\'")
+    def send_resquest(filename,code,cloud_username):
+        if requests.request(method="get",url=f"http://www.leibeibei.cn/api/save_code?fn={filename}&code={code}&username={cloud_username}").status_code == 200:
+            toast.show_toast("保存成功","代码已保存到云端！")
+
+    threading.Thread(target=send_resquest,args=(filename,code,cloud_username)).start()
+    
+def cloud_load_code(*args):
+    global cloud_username,code_dict,open_path
+    code_dict={}
+    if cloud_username == None:
+        messagebox.showwarning("提示","您还未登录！")
+        return None
+    
+    open_cloud_code_window=tk.Tk()
+    open_cloud_code_window.geometry("300x300+500+200")
+    Label(open_cloud_code_window,text="双击打开文件").pack()
+    
+    columns = ['序号','文件名',"代码行数"]
+    xscroll = Scrollbar(open_cloud_code_window, orient=HORIZONTAL)
+    yscroll = Scrollbar(open_cloud_code_window, orient=VERTICAL)
+    file_table = ttk.Treeview(
+        master=open_cloud_code_window,  # 父容器
+        height=20,  # 表格显示的行数,height行
+        columns=columns,  # 显示的列
+        show='headings',  # 隐藏首列
+        xscrollcommand=xscroll.set,  # x轴滚动条
+        yscrollcommand=yscroll.set,  # y轴滚动条
+    )
+    for column in columns:
+        file_table.heading(column=column, text=column, anchor=CENTER,
+                    command=lambda name=column:
+                    messagebox.showinfo('', '{}'.format(name)))  # 定义表头
+        file_table.column(column=column, width=100,
+                    minwidth=100, anchor=CENTER)  # 定义列
+        xscroll.config(command=file_table.xview)
+        xscroll.pack(side=BOTTOM, fill=X)
+        yscroll.config(command=file_table.yview)
+        yscroll.pack(side=RIGHT, fill=Y)
+        file_table.pack(fill=BOTH, expand=True)
+        
+    def get_cloud_code():
+        global cloud_username,code_dict,open_path
+        file_list=[]
+        user_list=requests.request(method="get",url="http://www.leibeibei.cn/api/get_UPC").json()["content"]
+        for user in user_list:
+            if user[1] == cloud_username:
+                code_dict_str=user[3]
+                
+                fixed_dict_str = ""
+                dict_value=code_dict_str.split(",")
+                for i in dict_value:
+                    i_list=i.split(":")
+                    if i==dict_value[-1]:
+                        fixed_dict_str += i_list[0]+':\''+i_list[1][1:-2].replace("\'","\\'").replace('\"','\\"').replace("\n","\\n")+"'}"
+                        continue
+                    fixed_dict_str += i_list[0]+':\''+i_list[1][1:-1].replace("\'","\\'").replace('\"','\\"').replace("\n","\\n")+'\','
+                
+                code_dict=eval(fixed_dict_str)
+                
+                id=0
+                for filename in code_dict:
+                    id+=1
+                    code_line_num=len(code_dict[filename].split("\n"))-1
+                    file_list.append([id,filename,code_line_num])
+        return file_list            
+    
+    file_table.delete(*file_table.get_children())
+    for index, data in enumerate(get_cloud_code()):
+        file_table.insert('', END, values=data)
+        
+    def cloud_open_code(event):
+        global cloud_username,code_dict,open_path,start,start1,code_input
+        for item in file_table.selection():
+            file = file_table.item(item, 'values')
+        filename=file[1]
+        
+        code_input.delete("1.0","end")
+        code_input.insert("1.0",re.sub(r"^'", "", code_dict[filename],count=0))
+        start=start1=0
+        
+        open_path="cloud:"+filename
+        root.title("HTML编辑器 - "+filename+"(云文件)")
+            
+             
+        open_cloud_code_window.destroy()
+    file_table.bind('<Double-Button-1>', cloud_open_code)
+    open_cloud_code_window.mainloop()
 
 # 关于、帮助
-info = '''名称:HTML编辑器
-作者：王铭瑄
-版本:3.4.5
-更新日志:
+log = '''
 2023/5/1:新增——自动补全
 2023/6/10:修复——文件编码bug(UnicodeDecodeError: 'gbk' codec can't decode byte 0xa5 in position xxx: illegal multibyte sequence)
 2023/6/11:新增——格式化、自动修复
@@ -1219,40 +1679,73 @@ info = '''名称:HTML编辑器
 2023/9/9:修复——自动补全bug
 2024/2/12:新增——自动缩进
 2024/4/22:新增——显示行数
-2024/4/22:修复——自动缩进bug
-2024/4/22:新增——meta、title、link标签的青色标记
+          修复——自动缩进bug
+          新增——meta、title、link标签的青色标记
 2024/5/25:修复——行数栏不同步滚动bug
 2024/5/26:修复——自动补全bug
-2024/5/26:修复——关闭窗口事件回调函数bug
+          修复——关闭窗口事件回调函数bug
 2024/5/27:新增——主题样式
 2024/6/2:新增——行选中时的样式
+         更改——帮助与关于窗口
+2024/6/30:新增——云服务(保存、加载)
+          新增——本地保存用户偏好和信息
 '''
-help_info = '''1.输入操作
-复制          Ctrl+C
-粘贴          Ctrl+V
-剪切          Ctrl+X
-撤销          Ctrl+Z
-恢复          Ctrl+Y
-查找          Ctrl+f
+help_info = '''
+1.输入操作
+
+复制\t\t\tCtrl+C
+粘贴\t\t\tCtrl+V
+剪切\t\t\tCtrl+X
+撤销\t\t\tCtrl+Z
+恢复\t\t\tCtrl+Y
+查找\t\t\tCtrl+f
+
 2.文件操作
-保存          Ctrl+S
-另存为        Alt+C
-打开          Ctrl+O
+保存\t\t\tCtrl+S
+另存为\t\t\tAlt+C
+打开\t\t\tCtrl+O
+
 3.代码操作
-预览          Ctrl+R
-检查          Ctrl+C
-格式化        Ctrl+G
-自动修复      Ctrl+F
-             
+预览\t\t\tCtrl+R
+检查\t\t\tCtrl+C
+格式化\t\t\tCtrl+G
+自动修复\t\t\tCtrl+F
 '''
 
 
 def show_info(*args):
-    messagebox.showinfo("关于", info)
+    info_window = tk.Tk()
+    info_window.attributes("-topmost", 1)
+    info_window.title("HTML编辑器--关于")
+    info_window.geometry("600x400+350+200")
+    info_window.config(bg=style_dict[style_name]["bg"])
+    
+    tk.Label(info_window, text="HTML编辑器", font=('微软雅黑', 30), fg=style_dict[style_name]["fg"], bg=style_dict[style_name]["bg"]).pack()
+    tk.Label(info_window, text="V3.6.0", font=('微软雅黑', 15), fg=style_dict[style_name]["fg"], bg=style_dict[style_name]["bg"]).pack()
+    tk.Label(info_window, text="作者：王铭瑄", font=('微软雅黑', 20), fg=style_dict[style_name]["fg"], bg=style_dict[style_name]["bg"]).pack()
+    tk.Label(info_window, text="更新日志：", font=('微软雅黑', 20), fg=style_dict[style_name]["fg"], bg=style_dict[style_name]["bg"]).pack()
+    
+    update_log=tk.Text(info_window, font=('微软雅黑', 10), fg=style_dict[style_name]["fg"], bg=style_dict[style_name]["bg"])
+    update_log.pack()
+    update_log.insert("1.0",log)
+    
+    info_window.mainloop()
 
 
 def show_help(*args):
-    messagebox.showinfo("帮助", help_info)
+    help_window = tk.Tk()
+    help_window.attributes("-topmost", 1)
+    help_window.title("HTML编辑器--帮助")
+    help_window.geometry("800x700+350+50")
+    help_window.config(bg=style_dict[style_name]["bg"])
+    
+    tk.Label(help_window, text="帮助", font=('微软雅黑', 30), fg=style_dict[style_name]["fg"], bg=style_dict[style_name]["bg"]).pack()
+    
+    tk.Label(help_window, text=help_info, font=('微软雅黑', 18), fg=style_dict[style_name]["fg"], bg=style_dict[style_name]["bg"]).pack()
+    # help_msg=tk.Text(help_window, font=('微软雅黑', 10), fg=style_dict[style_name]["fg"], bg=style_dict[style_name]["bg"])
+    # help_msg.pack()
+    # help_msg.insert("1.0",help_info)
+    help_window.mainloop()
 
 
 # 主程序(窗口)
@@ -1287,6 +1780,13 @@ file.add_command(label="打开(Ctrl+P)", command=open_html, font=('微软雅黑'
 file.add_command(label="压缩代码", command=compress_html, font=('微软雅黑', 10))
 # file.add_command(label="自动保存",command=pool_auto_save)
 # file.add_command(label="取消自动保存",command=cancel_auto_save)
+
+cloud = tk.Menu(cmds, tearoff=0, font=('微软雅黑', 10))
+cmds.add_cascade(label="云服务", menu=cloud)
+cloud.add_command(label="登录/注册", command=online_login, font=('微软雅黑', 10))
+cloud.add_command(label="注销登录", command=cloud_logout, font=('微软雅黑', 10))
+cloud.add_command(label="保存代码至云端", command=cloud_save_code, font=('微软雅黑', 10))
+cloud.add_command(label="从云端打开文件", command=cloud_load_code, font=('微软雅黑', 10))
 
 test = tk.Menu(cmds, tearoff=0, font=('微软雅黑', 10))
 cmds.add_cascade(label="测试", menu=test, font=('微软雅黑', 10))
@@ -1400,7 +1900,7 @@ code_input = tk.Text(root, undo=True, maxundo=10,
 line_text = Text(root, font=('微软雅黑', 10, 'bold'), takefocus=0, cursor='arrow', state='disabled',
                  bd=0, width=8)
 # on_line_select(None)
-# code_input.mark_set("insert", "1.0")
+code_input.mark_set("insert", "1.0")
 # on_line_select(None)
 scroll = tk.Scrollbar(code_input)
 
@@ -1482,7 +1982,15 @@ line_text.tag_configure("slt", foreground="#C6C6C6")
 start = 1.0
 start1 = 1.0
 root.update()
-green_code_color()
+
+if preference != "{}":
+    set_color(eval(preference)["color"])
+else:
+    green_code_color()
+    preference = "{'color': 'hacker'}"
+    with open("./preference.txt", "w") as f:
+        f.write(preference)
+    
 n = 0
 input_keys = [
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
@@ -1498,65 +2006,65 @@ input_keys = [
 while c:
     '''for tag in code_input.tag_names():00
         code_input.tag_remove("tag","1.0","end")'''
-    try:
-        tag_start_pos = code_input.search("<", start, stopindex=END)
-        tag_end_pos = code_input.search(">", start1, stopindex=END)
-        if not tag_start_pos or not tag_end_pos:
-            if any(keyboard.is_pressed(key) for key in input_keys) and n >= 100:
-                # if n==50:
-                for tag in code_input.tag_names():
-                    code_input.tag_remove("tag", "1.0", "end")
-                n = 0
-            else:
-                n += 1
-                pass
-            start = 1.0
-            start1 = 1.0
-            sleep(0.01)
+    #try:
+    tag_start_pos = code_input.search("<", start, stopindex=END)
+    tag_end_pos = code_input.search(">", start1, stopindex=END)
+    if not tag_start_pos or not tag_end_pos:
+        if any(keyboard.is_pressed(key) for key in input_keys) and n >= 100:
+            # if n==50:
+            for tag in code_input.tag_names():
+                code_input.tag_remove("tag", "1.0", "end")
+            n = 0
         else:
-            tag_end_pos = str(getIndex(code_input, tag_end_pos)[
-                0]) + "." + str(getIndex(code_input, tag_end_pos)[1] + 1)
-            # print(code_input.search("meta",tag_start_pos,tag_end_pos))
-            if code_input.search("meta", tag_start_pos, tag_end_pos) == "" and code_input.search("title", tag_start_pos, tag_end_pos) == "" and code_input.search("link", tag_start_pos, tag_end_pos) == "":
-                code_input.tag_add("tag", tag_start_pos, str(tag_end_pos))
-            start = tag_start_pos + "+1c"
-            start1 = str(tag_end_pos) + "+1c"
+            n += 1
+            pass
+        start = 1.0
+        start1 = 1.0
+        sleep(0.01)
+    else:
+        tag_end_pos = str(getIndex(code_input, tag_end_pos)[
+            0]) + "." + str(getIndex(code_input, tag_end_pos)[1] + 1)
+        # print(code_input.search("meta",tag_start_pos,tag_end_pos))
+        if code_input.search("meta", tag_start_pos, tag_end_pos) == "" and code_input.search("title", tag_start_pos, tag_end_pos) == "" and code_input.search("link", tag_start_pos, tag_end_pos) == "":
+            code_input.tag_add("tag", tag_start_pos, str(tag_end_pos))
+        start = tag_start_pos + "+1c"
+        start1 = str(tag_end_pos) + "+1c"
 
-        find_set_tag()
+    find_set_tag()
 
-        line_num_text = "共" + \
-            str(get_line_num()[0]) + "行," + str(get_line_num()[1]) + "个字符"
-        line_num_text_l.set(line_num_text)
+    line_num_text = "共" + \
+        str(get_line_num()[0]) + "行," + str(get_line_num()[1]) + "个字符"
+    line_num_text_l.set(line_num_text)
 
-        line_text.configure(state="normal")
-        line_text.delete("1.0", "end")
-        rn = 0
-        auto_return_pos = get_line_num()[2]
-        for i in range(get_line_num()[0]):
-            # if auto_return_pos != {}:
-            #     print(auto_return_pos)
-            line_text.insert(str(i+rn+1)+'.0', " "+str(i+1)+"\n")
-            for posk in auto_return_pos:
-                if i == posk:
-                    line_text.insert(str(i+rn+1)+'.0',
-                                     auto_return_pos[posk]*" \n")
-                    rn += auto_return_pos[posk]
+    line_text.configure(state="normal")
+    line_text.delete("1.0", "end")
+    rn = 0
+    auto_return_pos = get_line_num()[2]
+    for i in range(get_line_num()[0]+1):
+        # if auto_return_pos != {}:
+        #     print(auto_return_pos)
+        line_text.insert(str(i+rn+1)+'.0', " "+str(i+1)+"\n")
+        for posk in auto_return_pos:
+            if i == posk:
+                line_text.insert(str(i+rn+1)+'.0',
+                                    auto_return_pos[posk]*" \n")
+                rn += auto_return_pos[posk]
 
-        # 设置line_text的可视部分与code_input相同
-        code_input_visible = code_input.yview()
-        line_text.yview_moveto(code_input_visible[0])
-        
-        # 获取光标所在行并标记
-        line = code_input.index(tk.INSERT).split('.')[0]
-        line_text.configure(state="normal")
-        line_text.tag_remove("slt","1.0", "end")
-        line_text.tag_add("slt", f"{line}.0", f"{line}.end")
-        code_input.tag_remove("sl","1.0","end")
-        code_input.tag_add("sl", f"{line}.0", f"{line}.end")
-        
-        root.update()
-    except:
-        pass
+    # 设置line_text的可视部分与code_input相同
+    code_input_visible = code_input.yview()
+    line_text.yview_moveto(code_input_visible[0])
+    
+    # 获取光标所在行并标记
+    line = code_input.index(tk.INSERT).split('.')[0]
+    line_text.configure(state="normal")
+    line_text.tag_remove("slt","1.0", "end")
+    line_text.tag_add("slt", f"{line}.0", f"{line}.end")
+    code_input.tag_remove("sl","1.0","end")
+    code_input.tag_add("sl", f"{line}.0", f"{line}.end")
+    
+    root.update()
+    #except Exception as err:
+        #print(err)
+        #pass
 
 root.mainloop()
-
